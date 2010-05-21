@@ -2,6 +2,7 @@
 # Port of openpgp-php <http://github.com/bendiken/openpgp-php>
 
 from struct import pack, unpack
+import zlib, bz2
 
 class Message(object):
     """ Represents an OpenPGP message (set of packets)
@@ -232,7 +233,44 @@ class CompressedDataPacket(Packet):
     """ OpenPGP Compressed Data packet (tag 8).
         http://tools.ietf.org/html/rfc4880#section-5.6
     """
-    pass # TODO
+    # http://tools.ietf.org/html/rfc4880#section-9.3
+    algorithms = {0: 'Uncompressed', 1: 'ZIP', 2: 'ZLIB', 3: 'BZip2'}
+
+    def read(self):
+        self.algorithm = ord(self.read_byte())
+        self.data = self.read_bytes(self.length)
+        if self.algorithm == 0:
+            self.data = Message.parse(self.data)
+        elif self.algorithm == 1:
+            self.data = Message.parse(zlib.decompress(self.data, -15))
+        elif self.algorithm == 2:
+            self.data = Message.parse(zlib.decompress(self.data))
+        elif self.algorithm == 3:
+            self.data = Message.parse(bz2.decompress(self.data))
+        else:
+            pass # TODO: error?
+
+    def body(self):
+        body = chr(self.algorithm)
+        if self.algorithm == 0:
+            self.data = self.data.to_bytes()
+        elif self.algorithm == 1:
+            compressor = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -15)
+            body += compressor.compress(self.data.to_bytes())
+            body += compressor.flush()
+        elif self.algorithm == 2:
+            body += zlib.compress(self.data.to_bytes())
+        elif self.algorithm == 3:
+            body += bz2.compress(self.data.to_bytes())
+        else:
+            pass # TODO: error?
+        return body
+
+    def __iter__(self):
+        return iter(self.data)
+
+    def __getitem__(self, item):
+        return self.data[item]
 
 class EncryptedDataPacket(Packet):
     """ OpenPGP Symmetrically Encrypted Data packet (tag 9).
