@@ -2,6 +2,7 @@
 # Port of openpgp-php <http://github.com/bendiken/openpgp-php>
 
 from struct import pack, unpack
+from time import time
 import zlib, bz2
 
 class Message(object):
@@ -303,7 +304,27 @@ class LiteralDataPacket(Packet):
     """ OpenPGP Literal Data packet (tag 11).
         http://tools.ietf.org/html/rfc4880#section-5.9
     """
-    pass # TODO
+    def __init__(self, data=None, format='b', filename='data', timestamp=time()):
+        self.data = data
+        self.format = format
+        self.filename = filename
+        self.timestamp = timestamp
+
+    def normalize(self):
+        if self.format == 'u' or self.format == 't': # Normalize line endings
+            self.data = self.data.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\r\n")
+
+    def read(self):
+        self.size = self.length - 1 - 4
+        self.format = self.read_byte()
+        filename_length = ord(self.read_byte())
+        self.size -= filename_length
+        self.filename = self.read_bytes(filename_length)
+        self.timestamp = self.read_timestamp()
+        self.data = self.read_bytes(self.size)
+
+    def body(self):
+        return self.format + chr(len(self.filename)) + self.filename + pack('!L', self.timestamp) + self.data
 
 class TrustPacket(Packet):
     """ OpenPGP Trust packet (tag 12).
