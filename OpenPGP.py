@@ -191,7 +191,22 @@ class OnePassSignaturePacket(Packet):
     """ OpenPGP One-Pass Signature packet (tag 4).
         http://tools.ietf.org/html/rfc4880#section-5.4
     """
-    pass # TODO
+    def read(self):
+        self.version = ord(self.read_byte())
+        self.signature_type = ord(self.read_byte())
+        self.hash_algorithm = ord(self.read_byte())
+        self.key_algorithm = ord(self.read_byte())
+        self.key_id = ''
+        for i in range(0, 8): # Store KeyID in Hex
+          self.key_id += '%02X' % ord(self.read_byte())
+        self.nested = ord(self.read_byte())
+
+    def body(self):
+        body = chr(self.version) + chr(self.signature_type) + chr(self.hash_algorithm) + chr(self.key_algorithm)
+        for i in range(0, len(self.key_id), 2):
+          body += chr(int(self.key_id[i] + self.key_id[i+1], 16))
+        body += chr(int(self.nested))
+        return body
 
 class PublicKeyPacket(Packet):
     """ OpenPGP Public-Key packet (tag 6).
