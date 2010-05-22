@@ -180,7 +180,259 @@ class SignaturePacket(Packet):
     """ OpenPGP Signature packet (tag 2).
         http://tools.ietf.org/html/rfc4880#section-5.2
     """
-    pass # TODO
+    def __init__(self, data=None, key_algorithm=None, hash_algorithm=None):
+        super(SignaturePacket, self).__init__();
+        self.version = 4 # Default to version 4 sigs
+        self.hash_algorithm = hash_algorithm
+        if isinstance(self.hash_algorithm, str):
+            for a in SignaturePacket.hash_algorithms:
+                if SignaturePacket.hash_algorithms[a] == self.hash_algorithm:
+                    self.hash_algorithm = a
+                    break
+        self.key_algorithm = key_algorithm
+        if isinstance(self.key_algorithm, str):
+            for a in PublicKeyPacket.algorithms:
+                if PublicKeyPacket.algorithms[a] == self.key_algorithm:
+                    self.key_algorithm = a
+                    break
+        if data: # If we have any data, set up the creation time
+            self.hashed_subpackets = [self.CreationTime(time())]
+        if isinstance(data, LiteralDataPacket):
+            self.signature_type = data.format == 'b' and 0x00 or 0x01
+            data.normalize()
+            data = data.data
+        self.data = data # Store to-be-signed data in here until the signing happens
+
+    def sign_data(self, signers):
+        """ self.data must be set to the data to sign (done by constructor)
+            signers in the same format as verifiers for Message.
+        """
+        self.trailer = self.body(True)
+        signer = signers[self.key_algorithm_name()][self.hash_algorithm_name()]
+        self.data = signer(self.data + self.trailer)
+        self.hash_head = unpack('!H', self.data[:2])[0]
+
+    def read(self):
+        self.version = ord(self.read_byte())
+        if self.version == 3:
+            pass # TODO: V3 sigs
+        elif self.version == 4:
+            self.signature_type = ord(self.read_byte())
+            self.key_algorithm = ord(self.read_byte())
+            self.hash_algorithm = ord(self.read_byte())
+            self.trailer = chr(4) + chr(self.signature_type) + chr(self.key_algorithm) + chr(self.hash_algorithm)
+
+            hashed_size = self.read_unpacked(2, '!H')
+            hashed_subpackets = self.read_bytes(hashed_size)
+            self.trailer += pack('!H', hashed_size) + hashed_subpackets
+            self.hashed_subpackets = self.get_subpackets(hashed_subpackets)
+
+            self.trailer += chr(4) + chr(0xff) + pack('!L', 6 + hashed_size)
+
+            unhashed_size = self.read_unpacked(2, '!H')
+            self.unhashed_subpackets = self.get_subpackets(self.read_bytes(unhashed_size))
+
+            self.hash_head = self.read_unpacked(2, '!H')
+            self.data = self.read_mpi()
+
+    def body(trailer=False):
+        body = chr(4) + chr(self.signature_type) + chr(self.key_algorithm) + chr(self.hash_algorithm)
+
+        hashed_subpackets = ''
+        for p in self.hashed_subpackets:
+            hashed_subpackets += p.to_bytes()
+        body += pack('!H', len(hashed_subpackets)) + hashed_subpackets
+
+        # The trailer is just the top of the body plus some crap
+        if trailer:
+            return body + chr(4) + chr(0xff) + pack('!L', len(body))
+
+        unhashed_subpackets = ''
+        for p in self.unhashed_subpackets:
+            unhashed_subpackets += p.to_bytes()
+        body += pack('!H', len(unhashed_subpackets)) + unhashed_subpackets
+
+        body += pack('!H', self.hash_head)
+        body += pack('!H', len(self.data)*8) + self.data;
+
+        return body
+
+    def key_algorithm_name(self):
+        return PublicKeyPacket.algorithms[self.key_algorithm]
+
+    def hash_algorithm_name(self):
+        return self.hash_algorithms[self.hash_algorithm]
+
+    def issuer(self):
+        for p in self.hashed_subpackets:
+            if isinstance(p, self.IssuerPacket):
+                return p.data
+        for p in self.unhashed_subpackets:
+            if isinstance(p, self.IssuerPacket):
+                return p.data
+        return None
+
+    @classmethod
+    def get_subpackets(cls, input_data):
+        subpackets = []
+        length = len(input_data)
+        while length > 0:
+            subpacket, bytes_used = cls.get_subpacket(input_data)
+            if bytes_used > 0:
+                subpackets.append(subpacket)
+                input_data = input_data[bytes_used:]
+                length -= bytes_used
+            else: # Parsing stuck?
+                break
+        return subpackets
+
+    @classmethod
+    def get_subpacket(cls, input_data):
+        length = ord(input_data[0])
+        length_of_length = 1
+        # if($len < 192) One octet length, no furthur processing
+        if length > 190 and length < 255: # Two octet length
+            length_of_length = 2
+            length = ((length - 192) << 8) + ord(input_data[1]) + 192
+        if length == 255: # Five octet length
+            length_of_length = 5
+            length = unpack('!L', input_data[1:4])[0]
+        input_data = input_data[length_of_length:] # Chop off length header
+        tag = ord(input_data[0])
+        try:
+            klass = cls.subpacket_types[tag]
+
+            packet = klass()
+            packet.tag = tag
+            packet.input = input_data[1:length]
+            packet.length = length-1
+            packet.read()
+            packet.input = None
+        except KeyError:
+            packet = None # Eat error
+        input_data = input_data[length:] # Chop off the data from this packet
+        return (packet, length_of_length + length)
+
+    class Subpacket(Packet):
+        def __init__(self, data=None):
+             super(SignaturePacket.Subpacket, self).__init__()
+             for tag in SignaturePacket.subpacket_types:
+                 if SignaturePacket.subpacket_types[tag] == self.__class__:
+                     self.tag = tag
+                     break
+
+        def header_and_body(self):
+            body = self.body() # Get body first, we'll need its length
+            size = chr(255) + pack('!L', len(body)+1) # Use 5-octet lengths + 1 for tag as first packet body octet
+            tag = chr(self.tag)
+            return {'header': size + tag, 'body': body}
+
+    class SignatureCreationTimePacket(Subpacket):
+        """ http://tools.ietf.org/html/rfc4880#section-5.2.3.4 """
+        pass # TODO
+
+    class SignatureExpirationTimePacket(Subpacket):
+        pass # TODO
+
+    class ExportableCertificationPacket(Subpacket):
+        pass # TODO
+
+    class TrustSignaturePacket(Subpacket):
+        pass # TODO
+
+    class RegularExpressionPacket(Subpacket):
+        pass # TODO
+
+    class RevocablePacket(Subpacket):
+        pass # TODO
+
+    class KeyExpirationTimePacket(Subpacket):
+        pass # TODO
+
+    class PreferredSymmetricAlgorithmsPacket(Subpacket):
+        pass # TODO
+
+    class RevocationKeyPacket(Subpacket):
+        pass # TODO
+
+    class IssuerPacket(Subpacket):
+        """ http://tools.ietf.org/html/rfc4880#section-5.2.3.5 """
+        pass # TODO
+
+    class NotationDataPacket(Subpacket):
+        pass # TODO
+
+    class PreferredHashAlgorithmsPacket(Subpacket):
+        pass # TODO
+
+    class PreferredCompressionAlgorithmsPacket(Subpacket):
+        pass # TODO
+
+    class KeyServerPreferencesPacket(Subpacket):
+        pass # TODO
+
+    class PreferredKeyServerPacket(Subpacket):
+        pass # TODO
+
+    class PrimaryUserIDPacket(Subpacket):
+        pass # TODO
+
+    class PolicyURIPacket(Subpacket):
+        pass # TODO
+
+    class KeyFlagsPacket(Subpacket):
+        pass # TODO
+
+    class SignersUserIDPacket(Subpacket):
+        pass # TODO
+
+    class ReasonforRevocationPacket(Subpacket):
+        pass # TODO
+
+    class FeaturesPacket(Subpacket):
+        pass # TODO
+
+    class SignatureTargetPacket(Subpacket):
+        pass # TODO
+
+    class EmbeddedSignaturePacket(Subpacket):
+        pass # TODO
+
+    hash_algorithms = {
+        1: 'MD5',
+        2: 'SHA1',
+        3: 'RIPEMD160',
+        8: 'SHA256',
+        9: 'SHA384',
+        10: 'SHA512',
+        11: 'SHA224'
+    }
+
+    subpacket_types = {
+        2: SignatureCreationTimePacket,
+        3: SignatureExpirationTimePacket,
+        4: ExportableCertificationPacket,
+        5: TrustSignaturePacket,
+        6: RegularExpressionPacket,
+        7: RevocablePacket,
+        9: KeyExpirationTimePacket,
+        11: PreferredSymmetricAlgorithmsPacket,
+        12: RevocationKeyPacket,
+        16: IssuerPacket,
+        20: NotationDataPacket,
+        21: PreferredHashAlgorithmsPacket,
+        22: PreferredCompressionAlgorithmsPacket,
+        23: KeyServerPreferencesPacket,
+        24: PreferredKeyServerPacket,
+        25: PrimaryUserIDPacket,
+        26: PolicyURIPacket,
+        27: KeyFlagsPacket,
+        28: SignersUserIDPacket,
+        29: ReasonforRevocationPacket,
+        30: FeaturesPacket,
+        31: SignatureTargetPacket,
+        32: EmbeddedSignaturePacket
+    }
 
 class SymmetricSessionKeyPacket(Packet):
     """ OpenPGP Symmetric-Key Encrypted Session Key packet (tag 3).
