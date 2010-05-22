@@ -369,7 +369,16 @@ class SignaturePacket(Packet):
 
     class IssuerPacket(Subpacket):
         """ http://tools.ietf.org/html/rfc4880#section-5.2.3.5 """
-        pass # TODO
+        def read(self):
+            self.data = ''
+            for i in range(0, 8): # Store KeyID in Hex
+                self.data += '%02X' % ord(self.read_byte())
+
+        def body(self):
+            b = ''
+            for i in range(0, len(self.data), 2):
+                b += chr(int(self.data[i] + self.data[i+1], 16))
+            return b
 
     class NotationDataPacket(Subpacket):
         pass # TODO
