@@ -329,10 +329,18 @@ class SignaturePacket(Packet):
 
     class SignatureCreationTimePacket(Subpacket):
         """ http://tools.ietf.org/html/rfc4880#section-5.2.3.4 """
-        pass # TODO
+        def read(self):
+            self.data = self.read_timestamp()
+
+        def body(self):
+            return pack('!L', self.data)
 
     class SignatureExpirationTimePacket(Subpacket):
-        pass # TODO
+        def read(self):
+            self.data = self.read_timestamp()
+
+        def body(self):
+            return pack('!L', self.data)
 
     class ExportableCertificationPacket(Subpacket):
         pass # TODO
@@ -347,7 +355,11 @@ class SignaturePacket(Packet):
         pass # TODO
 
     class KeyExpirationTimePacket(Subpacket):
-        pass # TODO
+        def read(self):
+            self.data = self.read_timestamp()
+
+        def body(self):
+            return pack('!L', self.data)
 
     class PreferredSymmetricAlgorithmsPacket(Subpacket):
         pass # TODO
