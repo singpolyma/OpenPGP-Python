@@ -96,7 +96,7 @@ class Packet(object):
        if length > 191 and length < 224: # Two octet length
          return (tag, 3, ((length - 192) << 8) + ord(input_data[2]) + 192)
        if length == 255: # Five octet length
-         return (tag, 6, unpack('!L', input_data[2:4])[0]);
+         return (tag, 6, unpack('!L', input_data[2:4])[0])
        # TODO: Partial body lengths. 1 << ($len & 0x1F)
 
     @classmethod
@@ -181,7 +181,7 @@ class SignaturePacket(Packet):
         http://tools.ietf.org/html/rfc4880#section-5.2
     """
     def __init__(self, data=None, key_algorithm=None, hash_algorithm=None):
-        super(SignaturePacket, self).__init__();
+        super(SignaturePacket, self).__init__()
         self.version = 4 # Default to version 4 sigs
         self.hash_algorithm = hash_algorithm
         if isinstance(self.hash_algorithm, str):
@@ -253,7 +253,7 @@ class SignaturePacket(Packet):
         body += pack('!H', len(unhashed_subpackets)) + unhashed_subpackets
 
         body += pack('!H', self.hash_head)
-        body += pack('!H', len(self.data)*8) + self.data;
+        body += pack('!H', len(self.data)*8) + self.data
 
         return body
 
