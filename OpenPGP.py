@@ -416,9 +416,6 @@ class SignaturePacket(Packet):
     class SignatureTargetPacket(Subpacket):
         pass # TODO
 
-    class EmbeddedSignaturePacket(Subpacket):
-        pass # TODO
-
     hash_algorithms = {
         1: 'MD5',
         2: 'SHA1',
@@ -451,9 +448,13 @@ class SignaturePacket(Packet):
         28: SignersUserIDPacket,
         29: ReasonforRevocationPacket,
         30: FeaturesPacket,
-        31: SignatureTargetPacket,
-        32: EmbeddedSignaturePacket
+        31: SignatureTargetPacket
     }
+
+class EmbeddedSignaturePacket(SignaturePacket.Subpacket, SignaturePacket):
+    pass
+
+SignaturePacket.subpacket_types[32] = SignaturePacket.EmbeddedSignaturePacket = EmbeddedSignaturePacket
 
 class SymmetricSessionKeyPacket(Packet):
     """ OpenPGP Symmetric-Key Encrypted Session Key packet (tag 3).
