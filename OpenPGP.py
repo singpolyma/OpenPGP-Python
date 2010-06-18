@@ -573,7 +573,7 @@ class PublicKeyPacket(Packet):
        21: 'DH'
     }
 
-class PublicSubkeyPacket(Packet):
+class PublicSubkeyPacket(PublicKeyPacket):
     """ OpenPGP Public-Subkey packet (tag 14).
         http://tools.ietf.org/html/rfc4880#section-5.5.1.2
         http://tools.ietf.org/html/rfc4880#section-5.5.2
