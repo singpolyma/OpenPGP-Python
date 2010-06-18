@@ -582,14 +582,54 @@ class PublicSubkeyPacket(PublicKeyPacket):
     """
     pass # TODO
 
-class SecretKeyPacket(Packet):
+class SecretKeyPacket(PublicKeyPacket):
     """ OpenPGP Secret-Key packet (tag 5).
         http://tools.ietf.org/html/rfc4880#section-5.5.1.3
         http://tools.ietf.org/html/rfc4880#section-5.5.3
         http://tools.ietf.org/html/rfc4880#section-11.2
         http://tools.ietf.org/html/rfc4880#section-12
     """
-    pass # TODO
+    def read(self):
+        super(SecretKeyPacket, self).read() # All the fields from PublicKey
+        self.s2k_useage = ord(self.read_byte())
+        if self.s2k_useage == 255 or self.s2k_useage == 254:
+            self.symmetric_type = ord(self.read_byte())
+            self.s2k_type = ord(self.read_byte())
+            self.s2k_hash_algorithm = ord(self.read_byte())
+            if(self.s2k_type == 1 or self.s2k_type == 3):
+                self.s2k_salt = self.read_bytes(8)
+            if self.s2k_type == 3:
+                c = ord(self.read_byte())
+                self.s2k_count = int(16 + (c & 15)) << ((c >> 4) + 6)
+        elif self.s2k_useage > 0:
+            self.symmetric_type = self.s2k_useage
+        if self.s2k_useage > 0:
+            # TODO: IV of the same length as cipher's block size
+            self.encrypted_data = self.input # Rest of input is MPIs and checksum (encrypted)
+        else:
+            self.data = self.input # Rest of input is MPIs and checksum
+            self.key_from_data()
+
+    def key_from_data(self):
+        if not self.data:
+            return None # Not decrypted yet
+        self.input / self.data
+
+        key_fields = {
+            1: ['d', 'p', 'q', 'u'], # RSA
+           16: ['x'],                # ELG-E
+           17: ['x'],                # DSA
+        }
+        for field in key_fields[self.algorithm]:
+            self.key[field] = self.read_mpi()
+
+        # TODO: Validate checksum?
+        if self.s2k_useage == 254: # 20 octet sha1 hash
+            self.private_hash = self.read_bytes(20)
+        else: # Two-octet checksum
+            self.private_hash = self.read_bytes(2)
+
+        self.input = None
 
 class SecretSubkeyPacket(Packet):
     """ OpenPGP Secret-Subkey packet (tag 7).
