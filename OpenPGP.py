@@ -6,6 +6,7 @@ from time import time
 from math import floor, log
 import zlib, bz2
 import hashlib
+import re
 
 def bitlength(data):
     """ http://tools.ietf.org/html/rfc4880#section-12.2 """
@@ -732,7 +733,40 @@ class UserIDPacket(Packet):
         http://tools.ietf.org/html/rfc4880#section-5.11
         http://tools.ietf.org/html/rfc2822
     """
-    pass # TODO
+    def read(self):
+        self.text = self.input
+        self.name = self.comment = self.email = None
+        # User IDs of the form: "name (comment) <email>"
+        parts = re.findall('^([^\(]+)\(([^\)]+)\)\s+<([^>]+)>$', self.text)
+        if len(parts) > 0:
+            self.name = parts[0][0]
+            self.comment = parts[0][1]
+            self.email = parts[0][2]
+        else: # User IDs of the form: "name <email>"
+            parts = re.findall('^([^<]+)\s+<([^>]+)>$', self.text)
+            if len(parts) > 0:
+                self.name = parts[0][0]
+                self.email = parts[0][1]
+            else: # User IDs of the form: "name"
+                parts = re.findall('^([^<]+)$', self.text)
+                if len(parts) > 0:
+                    self.name = parts[0][1]
+                else: # User IDs of the form: "<email>"
+                    parts = re.findall('^<([^>]+)>$', self.text)
+                    if len(parts) > 0:
+                        self.email = parts[0][1]
+
+    def __str__(self):
+        text = []
+        if self.name:
+            text.append(self.name)
+        if self.comment:
+            text.append('('+self.comment+')')
+        if self.email:
+            text.append('<'+self.email+'>')
+        if len(text) < 1:
+            text = [self.text]
+        return ' '.join(text)
 
 class UserAttributePacket(Packet):
     """ OpenPGP User Attribute packet (tag 17).
