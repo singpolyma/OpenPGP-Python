@@ -631,7 +631,7 @@ class SecretKeyPacket(PublicKeyPacket):
 
         self.input = None
 
-class SecretSubkeyPacket(Packet):
+class SecretSubkeyPacket(SecretKeyPacket):
     """ OpenPGP Secret-Subkey packet (tag 7).
         http://tools.ietf.org/html/rfc4880#section-5.5.1.4
         http://tools.ietf.org/html/rfc4880#section-5.5.3
