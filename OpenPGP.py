@@ -3,7 +3,13 @@
 
 from struct import pack, unpack
 from time import time
+from math import floor, log
 import zlib, bz2
+import hashlib
+
+def bitlength(data):
+    """ http://tools.ietf.org/html/rfc4880#section-12.2 """
+    return (len(data) - 1) * 8 + int(floor(log(ord(data[0]), 2))) + 1
 
 class Message(object):
     """ Represents an OpenPGP message (set of packets)
@@ -490,7 +496,82 @@ class PublicKeyPacket(Packet):
         http://tools.ietf.org/html/rfc4880#section-11.1
         http://tools.ietf.org/html/rfc4880#section-12
     """
-    pass # TODO
+    def self_signatures(self, message):
+        """ Find self signatures in a message, these often contain metadata about the key """
+        sigs = []
+        keyid16 = self.fingerprint[-16:].upper()
+        for p in message:
+            if isinstance(p, SignaturePacket):
+                if(p.issuer() == keyid16):
+                    sigs.append(p)
+                else:
+                    packets = p.hashed_subpackets + p.unhashed_subpackets
+                    for s in packets:
+                        if isinstance(s, SignaturePacket.EmbeddedSignaturePacket) and s.issuer().upper() == keyid16:
+                            sigs.append(p)
+                            break
+            elif len(sigs) > 0:
+                break # After we've seen a self sig, the next non-sig stop all self-sigs
+        return sigs
+
+    def expires(self, message):
+        """ Find expiry time of this key based on the self signatures in a message """
+        for p in self.self_signatures(message):
+            packets = p.hashed_subpackets + p.unhashed_subpackets
+            for s in packets:
+                if isinstance(s, SignaturePacket.KeyExpirationTimePacket):
+                    return self.timestamp + s.data
+        return None # Never expires
+
+    def read(self):
+        """ http://tools.ietf.org/html/rfc4880#section-5.5.2 """
+        self.version = ord(self.read_byte())
+        if self.version == 2 or self.version == 3:
+            return False # TODO
+        elif self.version == 4:
+            self.timestamp = self.read_timestamp()
+            self.algorithm = ord(self.read_byte())
+            self.read_key_material()
+            return True
+
+    def read_key_material(self):
+        self.key = {}
+        for field in self.key_fields[self.algorithm]:
+            self.key[field] = self.read_mpi()
+        self.key_id = self.fingerprint()[-8:]
+
+    def fingerprint(self):
+        """ http://tools.ietf.org/html/rfc4880#section-12.2
+            http://tools.ietf.org/html/rfc4880#section-3.3
+        """
+        if self.version == 2 or self.version == 3:
+            self.fingerprint = hashlib.md5(self.key['n'] + self.key['e']).hexdigest().upper()
+        elif self.version == 4:
+            head = [chr(0x99), None, chr(self.version), pack('!L', self.timestamp), chr(self.algorithm)]
+            material = ''
+            for i in self.key_fields[self.algorithm]:
+                material += pack('!H', bitlength(self.key[i]))
+                material += self.key[i]
+            head[1] = pack('!H', 6 + len(material))
+            self.fingerprint = hashlib.sha1(''.join(head) + material).hexdigest().upper()
+        return self.fingerprint
+
+    key_fields = {
+        1: ['n', 'e'],          # RSA
+       16: ['p', 'g', 'y'],     # ELG-E
+       17: ['p', 'q', 'g', 'y'] # DSA
+    }
+
+    algorithms = {
+        1: 'RSA',
+        2: 'RSA',
+        3: 'RSA',
+       16: 'ELGAMAL',
+       17: 'DSA',
+       18: 'ECC',
+       19: 'ECDSA',
+       21: 'DH'
+    }
 
 class PublicSubkeyPacket(Packet):
     """ OpenPGP Public-Subkey packet (tag 14).
