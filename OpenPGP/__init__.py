@@ -63,11 +63,22 @@ class Message(object):
             if signature_packet and data_packet:
                 break
 
-    def verify(verifiers, index=0):
+        return (signature_packet, data_packet)
+
+    def verify(self, verifiers, index=0):
        """ Function to verify signature number index
            verifiers is an array of callbacks formatted like {'RSA': {'SHA256': CALLBACK}} that take two parameters: message and signature
        """
-       pass # TODO
+       signature_packet, data_packet = self.signature_and_data(index)
+       if not signature_packet or not data_packet:
+           return None # No signature or no data
+
+       verifier = verifiers[signature_packet.key_algorithm_name()][signature_packet.hash_algorithm_name()]
+       if not verifier:
+           return None # No verifier
+
+       data_packet.normalize()
+       return verifier(data_packet.data + signature_packet.trailer, signature_packet.data)
 
     def __iter__(self):
         return iter(self._packets)
