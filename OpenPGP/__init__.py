@@ -46,8 +46,22 @@ class Message(object):
             b += p.to_bytes()
         return b
 
-    def signature_and_data(index=0):
-        pass # TODO
+    def signature_and_data(self, index=0):
+        msg = self
+        while isinstance(msg[0], CompressedDataPacket):
+            msg = msg[0]
+
+        i = 0
+        signature_packet = data_packet = None
+        for p in msg:
+            if isinstance(p, SignaturePacket):
+                if i == index:
+                    signature_packet = p
+                i += 1
+            elif isinstance(p, LiteralDataPacket):
+                data_packet = p
+            if signature_packet and data_packet:
+                break
 
     def verify(verifiers, index=0):
        """ Function to verify signature number index
