@@ -95,7 +95,7 @@ class Packet(object):
     @classmethod
     def parse(cls, input_data):
         packet = None
-        if(len(input_data) > 0):
+        if len(input_data) > 0:
             if ord(input_data[0]) & 64:
                 tag, head_length, data_length = Packet.parse_new_format(input_data)
             else:
