@@ -128,7 +128,7 @@ class Packet(object):
        if length > 191 and length < 224: # Two octet length
          return (tag, 3, ((length - 192) << 8) + ord(input_data[2]) + 192)
        if length == 255: # Five octet length
-         return (tag, 6, unpack('!L', input_data[2:4])[0])
+         return (tag, 6, unpack('!L', input_data[2:6])[0])
        # TODO: Partial body lengths. 1 << ($len & 0x1F)
 
     @classmethod
@@ -147,7 +147,7 @@ class Packet(object):
             data_length = unpack('!H', input_data[1:3])[0]
         elif length == 2: # The packet has a four-octet length. The header is 5 octets long.
             head_length = 5
-            data_length = unpack('!L', input_data[1:4])[0]
+            data_length = unpack('!L', input_data[1:5])[0]
         elif length == 3: # The packet is of indeterminate length. The header is 1 octet long.
             head_length = 1
             data_length = len(input_data) - head_length
@@ -328,7 +328,7 @@ class SignaturePacket(Packet):
             length = ((length - 192) << 8) + ord(input_data[1]) + 192
         if length == 255: # Five octet length
             length_of_length = 5
-            length = unpack('!L', input_data[1:4])[0]
+            length = unpack('!L', input_data[1:5])[0]
         input_data = input_data[length_of_length:] # Chop off length header
         tag = ord(input_data[0])
         try:
