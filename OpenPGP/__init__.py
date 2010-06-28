@@ -663,7 +663,7 @@ class SecretKeyPacket(PublicKeyPacket):
     def key_from_data(self):
         if not self.data:
             return None # Not decrypted yet
-        self.input / self.data
+        self.input = self.data
 
         key_fields = {
             1: ['d', 'p', 'q', 'u'], # RSA
