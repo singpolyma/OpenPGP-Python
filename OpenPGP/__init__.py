@@ -411,6 +411,10 @@ class SignaturePacket(Packet):
 
     class IssuerPacket(Subpacket):
         """ http://tools.ietf.org/html/rfc4880#section-5.2.3.5 """
+        def __init__(self, keyid=None):
+            super(self.__class__, self).__init__()
+            self.data = keyid
+
         def read(self):
             self.data = ''
             for i in range(0, 8): # Store KeyID in Hex
