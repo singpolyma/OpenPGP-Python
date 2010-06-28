@@ -229,7 +229,7 @@ class SignaturePacket(Packet):
                     self.key_algorithm = a
                     break
         if data: # If we have any data, set up the creation time
-            self.hashed_subpackets = [self.CreationTime(time())]
+            self.hashed_subpackets = [self.SignatureCreationTimePacket(time())]
         if isinstance(data, LiteralDataPacket):
             self.signature_type = data.format == 'b' and 0x00 or 0x01
             data.normalize()
