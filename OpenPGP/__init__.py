@@ -367,6 +367,10 @@ class SignaturePacket(Packet):
 
     class SignatureCreationTimePacket(Subpacket):
         """ http://tools.ietf.org/html/rfc4880#section-5.2.3.4 """
+        def __init__(self, time=time()):
+            super(self.__class__, self).__init__()
+            self.data = time
+
         def read(self):
             self.data = self.read_timestamp()
 
