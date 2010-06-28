@@ -547,7 +547,7 @@ class PublicKeyPacket(Packet):
     def self_signatures(self, message):
         """ Find self signatures in a message, these often contain metadata about the key """
         sigs = []
-        keyid16 = self.fingerprint[-16:].upper()
+        keyid16 = self.fingerprint()[-16:].upper()
         for p in message:
             if isinstance(p, SignaturePacket):
                 if(p.issuer() == keyid16):
@@ -592,8 +592,10 @@ class PublicKeyPacket(Packet):
         """ http://tools.ietf.org/html/rfc4880#section-12.2
             http://tools.ietf.org/html/rfc4880#section-3.3
         """
+        if self._fingerprint:
+            return self._fingerprint
         if self.version == 2 or self.version == 3:
-            self.fingerprint = hashlib.md5(self.key['n'] + self.key['e']).hexdigest().upper()
+            self._fingerprint = hashlib.md5(self.key['n'] + self.key['e']).hexdigest().upper()
         elif self.version == 4:
             head = [chr(0x99), None, chr(self.version), pack('!L', self.timestamp), chr(self.algorithm)]
             material = ''
@@ -601,8 +603,8 @@ class PublicKeyPacket(Packet):
                 material += pack('!H', bitlength(self.key[i]))
                 material += self.key[i]
             head[1] = pack('!H', 6 + len(material))
-            self.fingerprint = hashlib.sha1(''.join(head) + material).hexdigest().upper()
-        return self.fingerprint
+            self._fingerprint = hashlib.sha1(''.join(head) + material).hexdigest().upper()
+        return self._fingerprint
 
     key_fields = {
         1: ['n', 'e'],          # RSA
