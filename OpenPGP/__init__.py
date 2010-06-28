@@ -375,7 +375,7 @@ class SignaturePacket(Packet):
             self.data = self.read_timestamp()
 
         def body(self):
-            return pack('!L', self.data)
+            return pack('!L', int(self.data))
 
     class SignatureExpirationTimePacket(Subpacket):
         def read(self):
@@ -756,7 +756,7 @@ class LiteralDataPacket(Packet):
         self.data = self.read_bytes(self.size)
 
     def body(self):
-        return self.format + chr(len(self.filename)) + self.filename + pack('!L', self.timestamp) + self.data
+        return self.format + chr(len(self.filename)) + self.filename + pack('!L', int(self.timestamp)) + self.data
 
 class TrustPacket(Packet):
     """ OpenPGP Trust packet (tag 12).
