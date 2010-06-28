@@ -273,7 +273,7 @@ class SignaturePacket(Packet):
             self.hash_head = self.read_unpacked(2, '!H')
             self.data = self.read_mpi()
 
-    def body(trailer=False):
+    def body(self, trailer=False):
         body = chr(4) + chr(self.signature_type) + chr(self.key_algorithm) + chr(self.hash_algorithm)
 
         hashed_subpackets = ''
