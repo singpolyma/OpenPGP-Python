@@ -536,6 +536,14 @@ class PublicKeyPacket(Packet):
         http://tools.ietf.org/html/rfc4880#section-11.1
         http://tools.ietf.org/html/rfc4880#section-12
     """
+    def __init__(self, keydata=None):
+        super(PublicKeyPacket, self).__init__()
+        self.key = keydata
+        self._fingerprint = None
+        self.version = 4
+        self.algorithm = 1 # RSA
+        self.timestamp = int(time())
+
     def self_signatures(self, message):
         """ Find self signatures in a message, these often contain metadata about the key """
         sigs = []
