@@ -213,9 +213,10 @@ class SignaturePacket(Packet):
         http://tools.ietf.org/html/rfc4880#section-5.2
     """
     def __init__(self, data=None, key_algorithm=None, hash_algorithm=None):
-        super(SignaturePacket, self).__init__()
+        super(self.__class__, self).__init__()
         self.version = 4 # Default to version 4 sigs
         self.hash_algorithm = hash_algorithm
+        self.hashed_subpackets = self.unhashed_subpackets = []
         if isinstance(self.hash_algorithm, str):
             for a in SignaturePacket.hash_algorithms:
                 if SignaturePacket.hash_algorithms[a] == self.hash_algorithm:
@@ -616,7 +617,7 @@ class SecretKeyPacket(PublicKeyPacket):
         http://tools.ietf.org/html/rfc4880#section-12
     """
     def read(self):
-        super(SecretKeyPacket, self).read() # All the fields from PublicKey
+        super(self.__class__, self).read() # All the fields from PublicKey
         self.s2k_useage = ord(self.read_byte())
         if self.s2k_useage == 255 or self.s2k_useage == 254:
             self.symmetric_type = ord(self.read_byte())
@@ -726,6 +727,7 @@ class LiteralDataPacket(Packet):
         http://tools.ietf.org/html/rfc4880#section-5.9
     """
     def __init__(self, data=None, format='b', filename='data', timestamp=time()):
+        super(self.__class__, self).__init__()
         self.data = data
         self.format = format
         self.filename = filename
