@@ -243,7 +243,12 @@ class SignaturePacket(Packet):
         self.trailer = self.body(True)
         signer = signers[self.key_algorithm_name()][self.hash_algorithm_name()]
         self.data = signer(self.data + self.trailer)
-        self.hash_head = unpack('!H', self.data[:2])[0]
+        if isinstance(self.data, long):
+            data = '%X' % self.data
+            self.data = ''
+            for i in range(0, len(data), 2):
+                self.data += chr(int(data[i:i+2], 16))
+        self.hash_head = unpack('!H', self.data[0:2])[0]
 
     def read(self):
         self.version = ord(self.read_byte())
