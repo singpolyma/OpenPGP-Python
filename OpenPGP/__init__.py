@@ -536,13 +536,18 @@ class PublicKeyPacket(Packet):
         http://tools.ietf.org/html/rfc4880#section-11.1
         http://tools.ietf.org/html/rfc4880#section-12
     """
-    def __init__(self, keydata=None):
+    def __init__(self, keydata=None, version=4, algorithm=1, timestamp=time()):
         super(PublicKeyPacket, self).__init__()
-        self.key = keydata
         self._fingerprint = None
-        self.version = 4
-        self.algorithm = 1 # RSA
-        self.timestamp = int(time())
+        self.version = version
+        self.algorithm = algorithm
+        self.timestamp = int(timestamp)
+        if isinstance(keydata, tuple) or isinstance(keydata, list):
+            self.key = {}
+            for i in range(0, min(len(keydata), len(self.key_fields[self.algorithm]))):
+                 self.key[self.key_fields[self.algorithm][i]] = keydata[i]
+        else:
+            self.key = keydata
 
     def self_signatures(self, message):
         """ Find self signatures in a message, these often contain metadata about the key """
@@ -639,6 +644,13 @@ class SecretKeyPacket(PublicKeyPacket):
         http://tools.ietf.org/html/rfc4880#section-11.2
         http://tools.ietf.org/html/rfc4880#section-12
     """
+    def __init__(self, keydata=None, version=4, algorithm=1, timestamp=time()):
+        super(SecretKeyPacket, self).__init__(keydata, version, algorithm, timestamp)
+        if isinstance(keydata, tuple) or isinstance(keydata, list):
+            public_len = len(self.key_fields[self.algorithm])
+            for i in range(public_len, len(keydata)):
+                 self.key[self.secret_key_fields[self.algorithm][i-public_len]] = keydata[i]
+
     def read(self):
         super(self.__class__, self).read() # All the fields from PublicKey
         self.s2k_useage = ord(self.read_byte())
@@ -665,12 +677,7 @@ class SecretKeyPacket(PublicKeyPacket):
             return None # Not decrypted yet
         self.input = self.data
 
-        key_fields = {
-            1: ['d', 'p', 'q', 'u'], # RSA
-           16: ['x'],                # ELG-E
-           17: ['x'],                # DSA
-        }
-        for field in key_fields[self.algorithm]:
+        for field in self.secret_key_fields[self.algorithm]:
             self.key[field] = self.read_mpi()
 
         # TODO: Validate checksum?
@@ -680,6 +687,12 @@ class SecretKeyPacket(PublicKeyPacket):
             self.private_hash = self.read_bytes(2)
 
         self.input = None
+
+    secret_key_fields = {
+        1: ['d', 'p', 'q', 'u'], # RSA
+       16: ['x'],                # ELG-E
+       17: ['x'],                # DSA
+    }
 
 class SecretSubkeyPacket(SecretKeyPacket):
     """ OpenPGP Secret-Subkey packet (tag 7).

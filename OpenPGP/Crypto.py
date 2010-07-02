@@ -7,8 +7,8 @@ import hashlib, math
 class RSA:
     """ A wrapper for using the classes from OpenPGP.py with PyCrypto """
     def __init__(self, packet):
-        if not isinstance(packet, OpenPGP.Packet) and not isinstance(packet, OpenPGP.Message):
-            packet = OpenPGP.Message.parse(packet)
+        packet = self._parse_packet(packet)
+        self._key = self._message = None
         if isinstance(packet, OpenPGP.PublicKeyPacket) or isinstance(packet[0], OpenPGP.PublicKeyPacket): # If it's a key (other keys are subclasses of this one)
             self._key = packet
         else:
@@ -68,8 +68,7 @@ class RSA:
         """ Pass a message to verify with this key, or a key (OpenPGP or RSAobj) to check this message with
             Second optional parameter to specify which signature to verify (if there is more than one)
         """
-        if not isinstance(packet, OpenPGP.Packet) and not isinstance(packet, OpenPGP.Message):
-            packet = OpenPGP.Message.parse(packet)
+        packet = self._parse_packet(packet)
         if isinstance(packet, OpenPGP.Message) and not isinstance(packet[0], OpenPGP.PublicKeyPacket):
             signature_packet, data_packet = packet.signature_and_data(index)
             key = self.public_key(signature_packet.issuer())
@@ -89,11 +88,10 @@ class RSA:
                                   }})
 
     def sign(self, packet, hash='SHA256', keyid=None):
-        if not isinstance(packet, OpenPGP.Packet) and not isinstance(packet, OpenPGP.Message):
-            if self._key:
-                packet = OpenPGP.LiteralDataPacket(packet)
-            else:
-                packet = OpenPGP.Message.parse(packet)
+        if self._key and not isinstance(packet, OpenPGP.Packet) and not isinstance(packet, OpenPGP.Message):
+            packet = OpenPGP.LiteralDataPacket(packet)
+        else:
+            packet = self._parse_packet(packet)
 
         if isinstance(packet, OpenPGP.SecretKeyPacket) or isinstance(packet, Crypto.PublicKey.RSA.RSAobj) or (hasattr(packet, '__getitem__') and isinstance(packet[0], OpenPGP.SecretKeyPacket)):
             key = packet
@@ -120,18 +118,36 @@ class RSA:
         return OpenPGP.Message([sig, message])
 
     @classmethod
+    def _parse_packet(cls, packet):
+        if isinstance(packet, OpenPGP.Packet) or isinstance(packet, OpenPGP.Message):
+            return packet
+        elif isinstance(packet, tuple) or isinstance(packet, list):
+            if isinstance(packet[0], long):
+                data = []
+                for i in packet:
+                    data.append(Crypto.Util.number.long_to_bytes(i)) # OpenPGP likes bytes
+            else:
+                data = packet
+            return OpenPGP.SecretKeyPacket(keydata=data, algorithm=1, version=3) # V3 for fingerprint with no timestamp
+        else:
+            return OpenPGP.Message.parse(packet)
+
+    @classmethod
     def convert_key(cls, packet, private=False):
         if isinstance(packet, Crypto.PublicKey.RSA.RSAobj):
             return packet
-        if not isinstance(packet, OpenPGP.Packet) and not isinstance(packet, OpenPGP.Message):
-            packet = OpenPGP.Message.parse(packet)
+        packet = cls._parse_packet(packet)
         if isinstance(packet, OpenPGP.Message):
             packet = packet[0]
 
+        public = (Crypto.Util.number.bytes_to_long(packet.key['n']), Crypto.Util.number.bytes_to_long(packet.key['e']))
         if private:
-            return Crypto.PublicKey.RSA.construct((Crypto.Util.number.bytes_to_long(packet.key['n']), Crypto.Util.number.bytes_to_long(packet.key['e']), Crypto.Util.number.bytes_to_long(packet.key['d']), Crypto.Util.number.bytes_to_long(packet.key['p']), Crypto.Util.number.bytes_to_long(packet.key['q']), Crypto.Util.number.bytes_to_long(packet.key['u'])))
+            private =  (Crypto.Util.number.bytes_to_long(packet.key['d']),)
+            if packet.key.has_key('p'): # Has optional parts
+                private += (Crypto.Util.number.bytes_to_long(packet.key['p']), Crypto.Util.number.bytes_to_long(packet.key['q']), Crypto.Util.number.bytes_to_long(packet.key['u']))
+            return Crypto.PublicKey.RSA.construct(public + private)
         else:
-            return Crypto.PublicKey.RSA.construct((Crypto.Util.number.bytes_to_long(packet.key['n']), Crypto.Util.number.bytes_to_long(packet.key['e'])))
+            return rypto.PublicKey.RSA.construct(public)
 
     @classmethod
     def convert_public_key(cls, packet):
