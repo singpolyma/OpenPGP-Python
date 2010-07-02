@@ -147,7 +147,7 @@ class RSA:
                 private += (Crypto.Util.number.bytes_to_long(packet.key['p']), Crypto.Util.number.bytes_to_long(packet.key['q']), Crypto.Util.number.bytes_to_long(packet.key['u']))
             return Crypto.PublicKey.RSA.construct(public + private)
         else:
-            return rypto.PublicKey.RSA.construct(public)
+            return Crypto.PublicKey.RSA.construct(public)
 
     @classmethod
     def convert_public_key(cls, packet):
