@@ -217,13 +217,13 @@ class SignaturePacket(Packet):
         self.version = 4 # Default to version 4 sigs
         self.hash_algorithm = hash_algorithm
         self.hashed_subpackets = self.unhashed_subpackets = []
-        if isinstance(self.hash_algorithm, str):
+        if isinstance(self.hash_algorithm, basestring):
             for a in SignaturePacket.hash_algorithms:
                 if SignaturePacket.hash_algorithms[a] == self.hash_algorithm:
                     self.hash_algorithm = a
                     break
         self.key_algorithm = key_algorithm
-        if isinstance(self.key_algorithm, str):
+        if isinstance(self.key_algorithm, basestring):
             for a in PublicKeyPacket.algorithms:
                 if PublicKeyPacket.algorithms[a] == self.key_algorithm:
                     self.key_algorithm = a
@@ -234,6 +234,8 @@ class SignaturePacket(Packet):
             self.signature_type = data.format == 'b' and 0x00 or 0x01
             data.normalize()
             data = data.data
+        if isinstance(data, unicode):
+            data = data.encode('utf-8')
         self.data = data # Store to-be-signed data in here until the signing happens
 
     def sign_data(self, signers):
@@ -764,6 +766,8 @@ class LiteralDataPacket(Packet):
     """
     def __init__(self, data=None, format='b', filename='data', timestamp=time()):
         super(self.__class__, self).__init__()
+        if isinstance(data, unicode):
+            data = data.encode('utf-8')
         self.data = data
         self.format = format
         self.filename = filename
