@@ -891,6 +891,9 @@ class UserIDPacket(Packet):
             text = [self.text]
         return ' '.join(text)
 
+    def body(self):
+        return self.__str__()
+
 class UserAttributePacket(Packet):
     """ OpenPGP User Attribute packet (tag 17).
         http://tools.ietf.org/html/rfc4880#section-5.12
