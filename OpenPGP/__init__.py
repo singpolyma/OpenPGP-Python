@@ -293,7 +293,7 @@ class SignaturePacket(Packet):
         body += pack('!H', len(unhashed_subpackets)) + unhashed_subpackets
 
         body += pack('!H', self.hash_head)
-        body += pack('!H', len(self.data)*8) + self.data
+        body += pack('!H', bitlength(self.data)) + self.data
 
         return body
 
