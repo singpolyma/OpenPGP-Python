@@ -608,14 +608,9 @@ class PublicKeyPacket(Packet):
             self.key[field] = self.read_mpi()
         self.key_id = self.fingerprint()[-8:]
 
-    def fingerprint(self):
-        """ http://tools.ietf.org/html/rfc4880#section-12.2
-            http://tools.ietf.org/html/rfc4880#section-3.3
-        """
-        if self._fingerprint:
-            return self._fingerprint
+    def fingerprint_material(self):
         if self.version == 2 or self.version == 3:
-            self._fingerprint = hashlib.md5(self.key['n'] + self.key['e']).hexdigest().upper()
+            return [self.key['n'], self.key['e']]
         elif self.version == 4:
             head = [chr(0x99), None, chr(self.version), pack('!L', self.timestamp), chr(self.algorithm)]
             material = ''
@@ -623,8 +618,25 @@ class PublicKeyPacket(Packet):
                 material += pack('!H', bitlength(self.key[i]))
                 material += self.key[i]
             head[1] = pack('!H', 6 + len(material))
-            self._fingerprint = hashlib.sha1(''.join(head) + material).hexdigest().upper()
+            return head + [material]
+
+    def fingerprint(self):
+        """ http://tools.ietf.org/html/rfc4880#section-12.2
+            http://tools.ietf.org/html/rfc4880#section-3.3
+        """
+        if self._fingerprint:
+            return self._fingerprint
+        if self.version == 2 or self.version == 3:
+            self._fingerprint = hashlib.md5(''.join(self.fingerprint_material())).hexdigest().upper()
+        elif self.version == 4:
+            self._fingerprint = hashlib.sha1(''.join(self.fingerprint_material())).hexdigest().upper()
         return self._fingerprint
+
+    def body(self):
+        if self.version == 2 or self.version == 3:
+            pass # TODO
+        elif self.version == 4:
+            return ''.join(self.fingerprint_material()[2:])
 
     key_fields = {
         1: ['n', 'e'],          # RSA
