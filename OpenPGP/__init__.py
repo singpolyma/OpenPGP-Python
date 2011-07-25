@@ -715,6 +715,37 @@ class SecretKeyPacket(PublicKeyPacket):
 
         self.input = None
 
+    def body(self):
+        b = super(self.__class__, self).body() + chr(self.s2k_useage)
+        secret_material = ''
+        if self.s2k_useage == 255 or self.s2k_useage == 254:
+            b += chr(self.symmetric_type)
+            b += chr(self.s2k_type)
+            b += chr(self.s2k_hash_algorithm)
+            if self.s2k_type == 1 or self.s2k_type == 3:
+                b += self.s2k_salt
+            if self.s2k_type == 3:
+                pass # TODO: reverse ugly big manipulation
+        if self.s2k_useage > 0:
+            b += self.encrypted_data
+        else:
+            for f in self.secret_key_fields[self.algorithm]:
+                f = self.key[f]
+                secret_material += pack('!H', bitlength(f))
+                secret_material += f
+            b += secret_material
+        if self.s2k_useage == 254:
+            # TODO: SHA1 checksum
+            b += "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
+        else:
+            # 2-octet checksum
+            # TODO: this design will not work for encrypted keys
+            chk = 0
+            for i in range(0, len(secret_material)):
+                chk = (chk + ord(secret_material[i])) % 65536
+            b += pack('!H', chk)
+        return b
+
     secret_key_fields = {
         1: ['d', 'p', 'q', 'u'], # RSA
        16: ['x'],                # ELG-E
