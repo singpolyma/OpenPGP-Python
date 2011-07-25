@@ -362,7 +362,7 @@ class SignaturePacket(Packet):
                      break
 
         def header_and_body(self):
-            body = self.body() # Get body first, we'll need its length
+            body = self.body() or '' # Get body first, we'll need its length
             size = chr(255) + pack('!L', len(body)+1) # Use 5-octet lengths + 1 for tag as first packet body octet
             tag = chr(self.tag)
             return {'header': size + tag, 'body': body}
