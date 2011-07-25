@@ -451,7 +451,7 @@ class SignaturePacket(Packet):
 
     class KeyFlagsPacket(Subpacket):
         def __init__(self, flags=[]):
-            super(self.__class__, self).__init__()
+            super(SignaturePacket.KeyFlagsPacket, self).__init__()
             self.flags = flags
 
         def read(self):
@@ -471,8 +471,8 @@ class SignaturePacket(Packet):
     class ReasonforRevocationPacket(Subpacket):
         pass # TODO
 
-    class FeaturesPacket(Subpacket):
-        pass # TODO
+    class FeaturesPacket(KeyFlagsPacket):
+        pass # All implemented in parent
 
     class SignatureTargetPacket(Subpacket):
         pass # TODO
