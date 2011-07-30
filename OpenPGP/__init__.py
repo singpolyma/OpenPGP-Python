@@ -859,9 +859,20 @@ class UserIDPacket(Packet):
         http://tools.ietf.org/html/rfc4880#section-5.11
         http://tools.ietf.org/html/rfc2822
     """
+    def __init__(self, name='', comment=None, email=None):
+        super(self.__class__, self).__init__()
+        self.name = self.comment = self.email = None
+        self.text = ''
+        if (not comment) and (not email):
+            self.input = name
+            self.read()
+        else:
+            self.name = name
+            self.comment = comment
+            self.email = email
+
     def read(self):
         self.text = self.input
-        self.name = self.comment = self.email = None
         # User IDs of the form: "name (comment) <email>"
         parts = re.findall('^([^\(]+)\(([^\)]+)\)\s+<([^>]+)>$', self.text)
         if len(parts) > 0:
