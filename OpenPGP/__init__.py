@@ -676,6 +676,7 @@ class SecretKeyPacket(PublicKeyPacket):
     """
     def __init__(self, keydata=None, version=4, algorithm=1, timestamp=time()):
         super(SecretKeyPacket, self).__init__(keydata, version, algorithm, timestamp)
+        self.s2k_useage = 0
         if isinstance(keydata, tuple) or isinstance(keydata, list):
             public_len = len(self.key_fields[self.algorithm])
             for i in range(public_len, len(keydata)):
