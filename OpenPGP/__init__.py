@@ -86,6 +86,9 @@ class Message(object):
     def __getitem__(self, item):
         return self._packets[item]
 
+    def append(self, item):
+        self._packets.append(item)
+
 class Packet(object):
     """ OpenPGP packet.
         http://tools.ietf.org/html/rfc4880#section-4.1
