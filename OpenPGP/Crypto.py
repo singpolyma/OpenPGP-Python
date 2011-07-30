@@ -117,6 +117,33 @@ class RSA:
 
         return OpenPGP.Message([sig, message])
 
+    def sign_key_userid(self, packet, hash='SHA256', keyid=None):
+        if isinstance(packet, list):
+            packet = OpenPGP.Message(packet)
+        elif not isinstance(packet, OpenPGP.Message):
+            packet = OpenPGP.Message.parse(packet)
+
+        key = self.key(keyid)
+        if not key or not packet: # Missing some data
+            return None
+
+        if not keyid:
+            keyid = key.fingerprint()[-16:]
+
+        key = self.private_key(keyid)
+
+        sig = packet.signature_and_data()[1]
+        if not sig:
+            sig = OpenPGP.SignaturePacket(packet, 'RSA', hash.upper())
+            sig.signature_type = 0x13
+            sig.hashed_subpackets.append(OpenPGP.SignaturePacket.KeyFlagsPacket([0x01]))
+            sig.hashed_subpackets.append(OpenPGP.SignaturePacket.IssuerPacket(keyid))
+            packet.append(sig)
+
+        sig.sign_data({'RSA': {hash: lambda m: key.sign(self._emsa_pkcs1_v1_5_encode(m, key.size()/8.0, hash), None)[0]}})
+
+        return packet
+
     @classmethod
     def _parse_packet(cls, packet):
         if isinstance(packet, OpenPGP.Packet) or isinstance(packet, OpenPGP.Message):
