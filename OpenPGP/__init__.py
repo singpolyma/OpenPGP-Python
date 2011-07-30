@@ -237,8 +237,13 @@ class SignaturePacket(Packet):
             self.signature_type = data.format == 'b' and 0x00 or 0x01
             data.normalize()
             data = data.data
-        if isinstance(data, unicode):
+        elif isinstance(data, unicode):
             data = data.encode('utf-8')
+        elif isinstance(data, Message) and isinstance(data[0], PublicKeyPacket):
+            # data is a message with PublicKey first, UserID second
+            key = ''.join(data[0].fingerprint_material())
+            user_id = data[1].body()
+            data = key + chr(0xB4) + pack('!L', len(user_id)) + user_id
         self.data = data # Store to-be-signed data in here until the signing happens
 
     def sign_data(self, signers):
