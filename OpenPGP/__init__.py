@@ -234,7 +234,7 @@ class SignaturePacket(Packet):
         if data: # If we have any data, set up the creation time
             self.hashed_subpackets = [self.SignatureCreationTimePacket(time())]
         if isinstance(data, LiteralDataPacket):
-            self.signature_type = data.format == 'b' and 0x00 or 0x01
+            self.signature_type = data.format != 'b' and 0x01 or 0x00
             data.normalize()
             data = data.data
         elif isinstance(data, unicode):
