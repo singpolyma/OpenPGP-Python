@@ -504,7 +504,11 @@ class SignaturePacket(Packet):
             return pack('!B', self.depth) + pack('!B', self.trust)
 
     class RegularExpressionPacket(Subpacket):
-        pass # TODO
+        def read(self):
+            self.data = self.input[0:-1]
+
+        def body(self):
+            return self.data + pack('!B', 0)
 
     class RevocablePacket(Subpacket):
         pass # TODO
