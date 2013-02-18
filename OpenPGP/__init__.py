@@ -641,7 +641,11 @@ class SignaturePacket(Packet):
             return pack('!B', self.data and 1 or 0)
 
     class PolicyURIPacket(Subpacket):
-        pass # TODO
+        def read(self):
+            self.data = self.input
+
+        def body(self):
+            return self.data
 
     class KeyFlagsPacket(Subpacket):
         def __init__(self, flags=[]):
