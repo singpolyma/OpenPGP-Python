@@ -663,7 +663,11 @@ class SignaturePacket(Packet):
             return b
 
     class SignersUserIDPacket(Subpacket):
-        pass # TODO
+        def read(self):
+            self.data = self.input
+
+        def body(self):
+            return self.data
 
     class ReasonforRevocationPacket(Subpacket):
         pass # TODO
