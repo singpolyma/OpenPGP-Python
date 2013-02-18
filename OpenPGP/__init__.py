@@ -808,13 +808,15 @@ class PublicKeyPacket(Packet):
     def read(self):
         """ http://tools.ietf.org/html/rfc4880#section-5.5.2 """
         self.version = ord(self.read_byte())
-        if self.version == 2 or self.version == 3:
-            return False # TODO
+        if self.version == 3:
+            self.timestamp = self.read_timestamp()
+            self.v3_days_of_validity = self.read_unpacked(2, '!H')
+            self.algorithm = ord(self.read_byte())
+            self.read_key_material()
         elif self.version == 4:
             self.timestamp = self.read_timestamp()
             self.algorithm = ord(self.read_byte())
             self.read_key_material()
-            return True
 
     def read_key_material(self):
         self.key = {}
@@ -824,7 +826,11 @@ class PublicKeyPacket(Packet):
 
     def fingerprint_material(self):
         if self.version == 2 or self.version == 3:
-            return [self.key['n'], self.key['e']]
+            material = []
+            for i in self.key_fields[self.algorithm]:
+                material += [pack('!H', bitlength(self.key[i]))]
+                material += [self.key[i]]
+            return material
         elif self.version == 4:
             head = [pack('!B', 0x99), None, pack('!B', self.version), pack('!L', self.timestamp), pack('!B', self.algorithm)]
             material = b''
@@ -847,8 +853,11 @@ class PublicKeyPacket(Packet):
         return self._fingerprint
 
     def body(self):
-        if self.version == 2 or self.version == 3:
-            pass # TODO
+        if self.version == 3:
+            return b''.join([
+                pack('!B', self.version), pack('!L', self.timestamp),
+                pack('!H', self.v3_days_of_validity), pack('!B', self.algorithm)
+            ] + self.fingerprint_material())
         elif self.version == 4:
             return b''.join(self.fingerprint_material()[2:])
 
