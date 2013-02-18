@@ -525,7 +525,16 @@ class SignaturePacket(Packet):
             return pack('!L', self.data)
 
     class PreferredSymmetricAlgorithmsPacket(Subpacket):
-        pass # TODO
+        def read(self):
+            self.data = []
+            while len(self.input) > 0:
+                self.data += [self.read_byte()]
+
+        def body(self):
+            body = b''
+            for algo in self.data:
+                body += pack('!B', algo)
+            return body
 
     class RevocationKeyPacket(Subpacket):
         pass # TODO
