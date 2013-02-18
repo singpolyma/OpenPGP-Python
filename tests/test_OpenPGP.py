@@ -281,3 +281,20 @@ class TestSerialization:
 
     def testSymmetricNoMDC(self):
         self.one_serialization("symmetric-no-mdc.gpg")
+
+class TestFingerprint:
+    def one_fingerprint(self, path, kf):
+        m = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/' + path, 'rb').read())
+        nose.tools.assert_equal(m[0].fingerprint(), kf)
+
+    def test000001006public_key(self):
+        self.one_fingerprint("000001-006.public_key", "421F28FEAAD222F856C8FFD5D4D54EA16F87040E")
+
+    def test000016006public_key(self):
+        self.one_fingerprint("000016-006.public_key", "AF95E4D7BAC521EE9740BED75E9F1523413262DC")
+
+    def test000027006public_key(self):
+        self.one_fingerprint("000027-006.public_key", "1EB20B2F5A5CC3BEAFD6E5CB7732CF988A63EA86")
+
+    def test000035006public_key(self):
+        self.one_fingerprint("000035-006.public_key", "CB7933459F59C70DF1C3FBEEDEDC3ECF689AF56D")
