@@ -537,7 +537,25 @@ class SignaturePacket(Packet):
             return body
 
     class RevocationKeyPacket(Subpacket):
-        pass # TODO
+        def read(self):
+            # bitfield must have bit 0x80 set, says the spec
+            bitfield = ord(self.read_byte())
+            self.sensitive = bitfield & 0x40 == 0x40
+            self.key_algorithm = ord(self.read_byte())
+
+            self.fingerprint = ''
+            while len(self.input) > 0:
+                self.fingerprint += '%02X' % ord(self.read_byte())
+
+        def body(self):
+            body = b''
+            body += pack('!B', 0x80 | (self.sensitive and 0x40 or 0x00))
+            body += pack('!B', self.key_algorithm)
+
+            for i in range(0, len(self.data), 2):
+                body += pack('!B', int(self.data[i] + self.data[i+1], 16))
+
+            return body
 
     class IssuerPacket(Subpacket):
         """ http://tools.ietf.org/html/rfc4880#section-5.2.3.5 """
