@@ -619,7 +619,12 @@ class SignaturePacket(Packet):
             return body
 
     class KeyServerPreferencesPacket(Subpacket):
-        pass # TODO
+        def read(self):
+            flags = ord(self.read_byte())
+            self.no_modify = flags & 0x80 == 0x80
+
+        def body(self):
+            return pack('!B', self.no_modify and 0x80 or 0x00)
 
     class PreferredKeyServerPacket(Subpacket):
         pass # TODO
