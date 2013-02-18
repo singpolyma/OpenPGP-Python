@@ -627,7 +627,11 @@ class SignaturePacket(Packet):
             return pack('!B', self.no_modify and 0x80 or 0x00)
 
     class PreferredKeyServerPacket(Subpacket):
-        pass # TODO
+        def read(self):
+            self.data = self.input
+
+        def body(self):
+            return self.data
 
     class PrimaryUserIDPacket(Subpacket):
         pass # TODO
