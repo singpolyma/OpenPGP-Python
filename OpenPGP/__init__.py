@@ -347,8 +347,7 @@ class SignaturePacket(Packet):
 
     def calculate_trailer(self):
         # The trailer is just the top of the body plus some crap
-        if trailer:
-            return self.body_start() + pack('!B', 4) + pack('!B', 0xff) + pack('!L', len(body))
+        return self.body_start() + pack('!B', 4) + pack('!B', 0xff) + pack('!L', len(body))
 
     def body_start(self):
         body = pack('!B', 4) + pack('!B', self.signature_type) + pack('!B', self.key_algorithm) + pack('!B', self.hash_algorithm)
