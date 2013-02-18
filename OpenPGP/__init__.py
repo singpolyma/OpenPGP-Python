@@ -10,7 +10,27 @@ import re
 
 def bitlength(data):
     """ http://tools.ietf.org/html/rfc4880#section-12.2 """
-    return (len(data) - 1) * 8 + int(floor(log(ord(data[0]), 2))) + 1
+    return (len(data) - 1) * 8 + int(floor(log(ord(data[0:1]), 2))) + 1
+
+def decode_s2k_count(c):
+    return int(16 + (c & 15)) << ((c >> 4) + 6)
+
+def encode_s2k_count(iterations):
+    if iterations >= 65011712:
+        return 255
+
+    count = iterations >> 6
+    c = 0
+    while count >= 32:
+        count = count >> 1
+        c += 1
+
+    result = (c << 4) | (count - 16)
+
+    if decode_s2k_count(result) < iterations:
+        return result + 1
+
+    return result
 
 class Message(object):
     """ Represents an OpenPGP message (set of packets)
@@ -41,7 +61,7 @@ class Message(object):
         self._packets = packets
 
     def to_bytes(self):
-        b = ''
+        b = b''
         for p in self:
             b += p.to_bytes()
         return b
@@ -89,6 +109,17 @@ class Message(object):
     def append(self, item):
         self._packets.append(item)
 
+    def __repr__(self):
+        return "%s: %s" % (type(self), self.__dict__.__repr__())
+
+    def __eq__(self, other):
+        if type(other) is type(self):
+            return self.__dict__ == other.__dict__
+        return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 class Packet(object):
     """ OpenPGP packet.
         http://tools.ietf.org/html/rfc4880#section-4.1
@@ -99,7 +130,7 @@ class Packet(object):
     def parse(cls, input_data):
         packet = None
         if len(input_data) > 0:
-            if ord(input_data[0]) & 64:
+            if ord(input_data[0:1]) & 64:
                 tag, head_length, data_length = Packet.parse_new_format(input_data)
             else:
                 tag, head_length, data_length = Packet.parse_old_format(input_data)
@@ -115,6 +146,7 @@ class Packet(object):
                   packet.length = data_length
                   packet.read()
                   packet.input = None
+                  packet.length = None
               except KeyError:
                   """ Eat the error """
         return (packet, head_length + data_length)
@@ -124,12 +156,12 @@ class Packet(object):
        """ Parses a new-format (RFC 4880) OpenPGP packet.
            http://tools.ietf.org/html/rfc4880#section-4.2.2
        """
-       tag = ord(input_data[0]) & 63
-       length = ord(input_data[1])
+       tag = ord(input_data[0:1]) & 63
+       length = ord(input_data[1:2])
        if length < 192: # One octet length
          return (tag, 2, length)
        if length > 191 and length < 224: # Two octet length
-         return (tag, 3, ((length - 192) << 8) + ord(input_data[2]) + 192)
+         return (tag, 3, ((length - 192) << 8) + ord(input_data[2:3]) + 192)
        if length == 255: # Five octet length
          return (tag, 6, unpack('!L', input_data[2:6])[0])
        # TODO: Partial body lengths. 1 << ($len & 0x1F)
@@ -139,12 +171,12 @@ class Packet(object):
         """ Parses an old-format (PGP 2.6.x) OpenPGP packet.
             http://tools.ietf.org/html/rfc4880#section-4.2.1
         """
-        tag = ord(input_data[0])
+        tag = ord(input_data[0:1])
         length = tag & 3
         tag = (tag >> 2) & 15
         if length == 0: # The packet has a one-octet length. The header is 2 octets long.
             head_length = 2
-            data_length = ord(input_data[1])
+            data_length = ord(input_data[1:2])
         elif length == 1: # The packet has a two-octet length. The header is 3 octets long.
             head_length = 3
             data_length = unpack('!H', input_data[1:3])[0]
@@ -171,13 +203,13 @@ class Packet(object):
 
     def header_and_body(self):
         body = self.body() # Get body first, we will need it's length
-        tag = chr(self.tag | 0xC0) # First two bits are 1 for new packet format
-        size = chr(255) + pack('!L', body and len(body) or 0) # Use 5-octet lengths
+        tag = pack('!B', self.tag | 0xC0) # First two bits are 1 for new packet format
+        size = pack('!B', 255) + pack('!L', body and len(body) or 0) # Use 5-octet lengths
         return {'header': tag + size, 'body': body }
 
     def to_bytes(self):
         data = self.header_and_body()
-        return data['header'] + (data['body'] and data['body'] or '')
+        return data['header'] + (data['body'] and data['body'] or b'')
 
     def read_timestamp(self):
         """ ttp://tools.ietf.org/html/rfc4880#section-3.5 """
@@ -196,7 +228,7 @@ class Packet(object):
 
     def read_byte(self):
       byte = self.read_bytes(1)
-      return byte and byte[0] or None
+      return byte and byte[0:1] or None
 
     def read_bytes(self, count=1):
         b = self.input[:count]
@@ -204,6 +236,17 @@ class Packet(object):
         return b
 
     tags = {} # Actual data at end of file
+
+    def __repr__(self):
+        return "%s: %s" % (type(self), self.__dict__.__repr__())
+
+    def __eq__(self, other):
+        if type(other) is type(self):
+            return self.__dict__ == other.__dict__
+        return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 class AsymmetricSessionKeyPacket(Packet):
     """ OpenPGP Public-Key Encrypted Session Key packet (tag 1).
@@ -216,17 +259,17 @@ class SignaturePacket(Packet):
         http://tools.ietf.org/html/rfc4880#section-5.2
     """
     def __init__(self, data=None, key_algorithm=None, hash_algorithm=None):
-        super(self.__class__, self).__init__()
+        super(SignaturePacket, self).__init__()
         self.version = 4 # Default to version 4 sigs
         self.hash_algorithm = hash_algorithm
         self.hashed_subpackets = self.unhashed_subpackets = []
-        if isinstance(self.hash_algorithm, basestring):
+        if isinstance(self.hash_algorithm, str):
             for a in SignaturePacket.hash_algorithms:
                 if SignaturePacket.hash_algorithms[a] == self.hash_algorithm:
                     self.hash_algorithm = a
                     break
         self.key_algorithm = key_algorithm
-        if isinstance(self.key_algorithm, basestring):
+        if isinstance(self.key_algorithm, str):
             for a in PublicKeyPacket.algorithms:
                 if PublicKeyPacket.algorithms[a] == self.key_algorithm:
                     self.key_algorithm = a
@@ -237,13 +280,13 @@ class SignaturePacket(Packet):
             self.signature_type = data.format != 'b' and 0x01 or 0x00
             data.normalize()
             data = data.data
-        elif isinstance(data, unicode):
+        elif hasattr(data, 'encode'):
             data = data.encode('utf-8')
         elif isinstance(data, Message) and isinstance(data[0], PublicKeyPacket):
             # data is a message with PublicKey first, UserID second
             key = ''.join(data[0].fingerprint_material())
             user_id = data[1].body()
-            data = key + chr(0xB4) + pack('!L', len(user_id)) + user_id
+            data = key + pack('!B', 0xB4) + pack('!L', len(user_id)) + user_id
         self.data = data # Store to-be-signed data in here until the signing happens
 
     def sign_data(self, signers):
@@ -257,7 +300,7 @@ class SignaturePacket(Packet):
             data = '%X' % self.data
             self.data = ''
             for i in range(0, len(data), 2):
-                self.data += chr(int(data[i:i+2], 16))
+                self.data += pack('!B', int(data[i:i+2], 16))
         self.hash_head = unpack('!H', self.data[0:2])[0]
 
     def read(self):
@@ -268,14 +311,14 @@ class SignaturePacket(Packet):
             self.signature_type = ord(self.read_byte())
             self.key_algorithm = ord(self.read_byte())
             self.hash_algorithm = ord(self.read_byte())
-            self.trailer = chr(4) + chr(self.signature_type) + chr(self.key_algorithm) + chr(self.hash_algorithm)
+            self.trailer = pack('!B', 4) + pack('!B', self.signature_type) + pack('!B', self.key_algorithm) + pack('!B', self.hash_algorithm)
 
             hashed_size = self.read_unpacked(2, '!H')
             hashed_subpackets = self.read_bytes(hashed_size)
             self.trailer += pack('!H', hashed_size) + hashed_subpackets
             self.hashed_subpackets = self.get_subpackets(hashed_subpackets)
 
-            self.trailer += chr(4) + chr(0xff) + pack('!L', 6 + hashed_size)
+            self.trailer += pack('!B', 4) + pack('!B', 0xff) + pack('!L', 6 + hashed_size)
 
             unhashed_size = self.read_unpacked(2, '!H')
             self.unhashed_subpackets = self.get_subpackets(self.read_bytes(unhashed_size))
@@ -283,19 +326,27 @@ class SignaturePacket(Packet):
             self.hash_head = self.read_unpacked(2, '!H')
             self.data = self.read_mpi()
 
-    def body(self, trailer=False):
-        body = chr(4) + chr(self.signature_type) + chr(self.key_algorithm) + chr(self.hash_algorithm)
+    def calculate_trailer(self):
+        # The trailer is just the top of the body plus some crap
+        if trailer:
+            return self.body_start() + pack('!B', 4) + pack('!B', 0xff) + pack('!L', len(body))
+
+    def body_start(self):
+        body = pack('!B', 4) + pack('!B', self.signature_type) + pack('!B', self.key_algorithm) + pack('!B', self.hash_algorithm)
 
         hashed_subpackets = ''
         for p in self.hashed_subpackets:
             hashed_subpackets += p.to_bytes()
         body += pack('!H', len(hashed_subpackets)) + hashed_subpackets
 
-        # The trailer is just the top of the body plus some crap
-        if trailer:
-            return body + chr(4) + chr(0xff) + pack('!L', len(body))
+        return body
 
-        unhashed_subpackets = ''
+    def body(self, trailer=False):
+        if not self.trailer:
+            self.trailer = self.calculate_trailer()
+        body = self.trailer[0:-6]
+
+        unhashed_subpackets = b''
         for p in self.unhashed_subpackets:
             unhashed_subpackets += p.to_bytes()
         body += pack('!H', len(unhashed_subpackets)) + unhashed_subpackets
@@ -336,17 +387,17 @@ class SignaturePacket(Packet):
 
     @classmethod
     def get_subpacket(cls, input_data):
-        length = ord(input_data[0])
+        length = ord(input_data[0:1])
         length_of_length = 1
         # if($len < 192) One octet length, no furthur processing
         if length > 190 and length < 255: # Two octet length
             length_of_length = 2
-            length = ((length - 192) << 8) + ord(input_data[1]) + 192
+            length = ((length - 192) << 8) + ord(input_data[1:2]) + 192
         if length == 255: # Five octet length
             length_of_length = 5
             length = unpack('!L', input_data[1:5])[0]
         input_data = input_data[length_of_length:] # Chop off length header
-        tag = ord(input_data[0])
+        tag = ord(input_data[0:1])
         try:
             klass = cls.subpacket_types[tag]
 
@@ -356,6 +407,7 @@ class SignaturePacket(Packet):
             packet.length = length-1
             packet.read()
             packet.input = None
+            packet.length = None
         except KeyError:
             packet = None # Eat error
         input_data = input_data[length:] # Chop off the data from this packet
@@ -371,14 +423,14 @@ class SignaturePacket(Packet):
 
         def header_and_body(self):
             body = self.body() or '' # Get body first, we'll need its length
-            size = chr(255) + pack('!L', len(body)+1) # Use 5-octet lengths + 1 for tag as first packet body octet
-            tag = chr(self.tag)
+            size = pack('!B', 255) + pack('!L', len(body)+1) # Use 5-octet lengths + 1 for tag as first packet body octet
+            tag = pack('!B', self.tag)
             return {'header': size + tag, 'body': body}
 
     class SignatureCreationTimePacket(Subpacket):
         """ http://tools.ietf.org/html/rfc4880#section-5.2.3.4 """
         def __init__(self, time=time()):
-            super(self.__class__, self).__init__()
+            super(SignaturePacket.SignatureCreationTimePacket, self).__init__()
             self.data = time
 
         def read(self):
@@ -422,7 +474,7 @@ class SignaturePacket(Packet):
     class IssuerPacket(Subpacket):
         """ http://tools.ietf.org/html/rfc4880#section-5.2.3.5 """
         def __init__(self, keyid=None):
-            super(self.__class__, self).__init__()
+            super(SignaturePacket.IssuerPacket, self).__init__()
             self.data = keyid
 
         def read(self):
@@ -431,9 +483,9 @@ class SignaturePacket(Packet):
                 self.data += '%02X' % ord(self.read_byte())
 
         def body(self):
-            b = ''
+            b = b''
             for i in range(0, len(self.data), 2):
-                b += chr(int(self.data[i] + self.data[i+1], 16))
+                b += pack('!B', int(self.data[i] + self.data[i+1], 16))
             return b
 
     class NotationDataPacket(Subpacket):
@@ -470,7 +522,7 @@ class SignaturePacket(Packet):
         def body(self):
             b = ''
             for f in self.flags:
-                b += chr(f)
+                b += pack('!B', f)
             return b
 
     class SignersUserIDPacket(Subpacket):
@@ -546,10 +598,10 @@ class OnePassSignaturePacket(Packet):
         self.nested = ord(self.read_byte())
 
     def body(self):
-        body = chr(self.version) + chr(self.signature_type) + chr(self.hash_algorithm) + chr(self.key_algorithm)
+        body = pack('!B', self.version) + pack('!B', self.signature_type) + pack('!B', self.hash_algorithm) + pack('!B', self.key_algorithm)
         for i in range(0, len(self.key_id), 2):
-          body += chr(int(self.key_id[i] + self.key_id[i+1], 16))
-        body += chr(int(self.nested))
+          body += pack('!B', int(self.key_id[i] + self.key_id[i+1], 16))
+        body += pack('!B', int(self.nested))
         return body
 
 class PublicKeyPacket(Packet):
@@ -620,8 +672,8 @@ class PublicKeyPacket(Packet):
         if self.version == 2 or self.version == 3:
             return [self.key['n'], self.key['e']]
         elif self.version == 4:
-            head = [chr(0x99), None, chr(self.version), pack('!L', self.timestamp), chr(self.algorithm)]
-            material = ''
+            head = [pack('!B', 0x99), None, pack('!B', self.version), pack('!L', self.timestamp), pack('!B', self.algorithm)]
+            material = b''
             for i in self.key_fields[self.algorithm]:
                 material += pack('!H', bitlength(self.key[i]))
                 material += self.key[i]
@@ -635,16 +687,16 @@ class PublicKeyPacket(Packet):
         if self._fingerprint:
             return self._fingerprint
         if self.version == 2 or self.version == 3:
-            self._fingerprint = hashlib.md5(''.join(self.fingerprint_material())).hexdigest().upper()
+            self._fingerprint = hashlib.md5(b''.join(self.fingerprint_material())).hexdigest().upper()
         elif self.version == 4:
-            self._fingerprint = hashlib.sha1(''.join(self.fingerprint_material())).hexdigest().upper()
+            self._fingerprint = hashlib.sha1(b''.join(self.fingerprint_material())).hexdigest().upper()
         return self._fingerprint
 
     def body(self):
         if self.version == 2 or self.version == 3:
             pass # TODO
         elif self.version == 4:
-            return ''.join(self.fingerprint_material()[2:])
+            return b''.join(self.fingerprint_material()[2:])
 
     key_fields = {
         1: ['n', 'e'],          # RSA
@@ -688,7 +740,7 @@ class SecretKeyPacket(PublicKeyPacket):
                  self.key[self.secret_key_fields[self.algorithm][i-public_len]] = keydata[i]
 
     def read(self):
-        super(self.__class__, self).read() # All the fields from PublicKey
+        super(SecretKeyPacket, self).read() # All the fields from PublicKey
         self.s2k_useage = ord(self.read_byte())
         if self.s2k_useage == 255 or self.s2k_useage == 254:
             self.symmetric_type = ord(self.read_byte())
@@ -697,8 +749,7 @@ class SecretKeyPacket(PublicKeyPacket):
             if(self.s2k_type == 1 or self.s2k_type == 3):
                 self.s2k_salt = self.read_bytes(8)
             if self.s2k_type == 3:
-                c = ord(self.read_byte())
-                self.s2k_count = int(16 + (c & 15)) << ((c >> 4) + 6)
+                self.s2k_count = decode_s2k_count(ord(self.read_byte()))
         elif self.s2k_useage > 0:
             self.symmetric_type = self.s2k_useage
         if self.s2k_useage > 0:
@@ -725,16 +776,16 @@ class SecretKeyPacket(PublicKeyPacket):
         self.input = None
 
     def body(self):
-        b = super(self.__class__, self).body() + chr(self.s2k_useage)
-        secret_material = ''
+        b = super(SecretKeyPacket, self).body() + pack('!B', self.s2k_useage)
+        secret_material = b''
         if self.s2k_useage == 255 or self.s2k_useage == 254:
-            b += chr(self.symmetric_type)
-            b += chr(self.s2k_type)
-            b += chr(self.s2k_hash_algorithm)
+            b += pack('!B', self.symmetric_type)
+            b += pack('!B', self.s2k_type)
+            b += pack('!B', self.s2k_hash_algorithm)
             if self.s2k_type == 1 or self.s2k_type == 3:
                 b += self.s2k_salt
             if self.s2k_type == 3:
-                pass # TODO: reverse ugly big manipulation
+                b += pack('!B', encode_s2k_count(self.s2k_count))
         if self.s2k_useage > 0:
             b += self.encrypted_data
         else:
@@ -743,16 +794,13 @@ class SecretKeyPacket(PublicKeyPacket):
                 secret_material += pack('!H', bitlength(f))
                 secret_material += f
             b += secret_material
-        if self.s2k_useage == 254:
-            # TODO: SHA1 checksum
-            b += "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
-        else:
+
             # 2-octet checksum
-            # TODO: this design will not work for encrypted keys
             chk = 0
             for i in range(0, len(secret_material)):
-                chk = (chk + ord(secret_material[i])) % 65536
+                chk = (chk + ord(secret_material[i:i+1])) % 65536
             b += pack('!H', chk)
+
         return b
 
     secret_key_fields = {
@@ -792,7 +840,7 @@ class CompressedDataPacket(Packet):
             pass # TODO: error?
 
     def body(self):
-        body = chr(self.algorithm)
+        body = pack('!B', self.algorithm)
         if self.algorithm == 0:
             self.data = self.data.to_bytes()
         elif self.algorithm == 1:
@@ -830,8 +878,8 @@ class LiteralDataPacket(Packet):
         http://tools.ietf.org/html/rfc4880#section-5.9
     """
     def __init__(self, data=None, format='b', filename='data', timestamp=time()):
-        super(self.__class__, self).__init__()
-        if isinstance(data, unicode):
+        super(LiteralDataPacket, self).__init__()
+        if hasattr(data, 'encode'):
             data = data.encode('utf-8')
         self.data = data
         self.format = format
@@ -852,7 +900,7 @@ class LiteralDataPacket(Packet):
         self.data = self.read_bytes(self.size)
 
     def body(self):
-        return self.format + chr(len(self.filename)) + self.filename + pack('!L', int(self.timestamp)) + self.data
+        return self.format + pack('!B', len(self.filename)) + self.filename + pack('!L', int(self.timestamp)) + self.data
 
 class TrustPacket(Packet):
     """ OpenPGP Trust packet (tag 12).
@@ -866,11 +914,11 @@ class UserIDPacket(Packet):
         http://tools.ietf.org/html/rfc2822
     """
     def __init__(self, name='', comment=None, email=None):
-        super(self.__class__, self).__init__()
+        super(UserIDPacket, self).__init__()
         self.name = self.comment = self.email = None
         self.text = ''
         if (not comment) and (not email):
-            self.input = name
+            self.input = name.encode('utf-8')
             self.read()
         else:
             self.name = name
@@ -878,26 +926,26 @@ class UserIDPacket(Packet):
             self.email = email
 
     def read(self):
-        self.text = self.input
+        self.text = self.input.decode('utf-8')
         # User IDs of the form: "name (comment) <email>"
         parts = re.findall('^([^\(]+)\(([^\)]+)\)\s+<([^>]+)>$', self.text)
         if len(parts) > 0:
-            self.name = parts[0][0]
-            self.comment = parts[0][1]
-            self.email = parts[0][2]
+            self.name = parts[0][0].strip()
+            self.comment = parts[0][1].strip()
+            self.email = parts[0][2].strip()
         else: # User IDs of the form: "name <email>"
             parts = re.findall('^([^<]+)\s+<([^>]+)>$', self.text)
             if len(parts) > 0:
-                self.name = parts[0][0]
-                self.email = parts[0][1]
+                self.name = parts[0][0].strip()
+                self.email = parts[0][1].strip()
             else: # User IDs of the form: "name"
                 parts = re.findall('^([^<]+)$', self.text)
                 if len(parts) > 0:
-                    self.name = parts[0][1]
+                    self.name = parts[0][1].strip()
                 else: # User IDs of the form: "<email>"
                     parts = re.findall('^<([^>]+)>$', self.text)
                     if len(parts) > 0:
-                        self.email = parts[0][1]
+                        self.email = parts[0][1].strip()
 
     def __str__(self):
         text = []
@@ -912,7 +960,7 @@ class UserIDPacket(Packet):
         return ' '.join(text)
 
     def body(self):
-        return self.__str__()
+        return self.__str__().encode('utf-8')
 
 class UserAttributePacket(Packet):
     """ OpenPGP User Attribute packet (tag 17).
