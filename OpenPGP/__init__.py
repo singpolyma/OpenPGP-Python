@@ -681,7 +681,13 @@ class SignaturePacket(Packet):
         pass # All implemented in parent
 
     class SignatureTargetPacket(Subpacket):
-        pass # TODO
+        def read(self):
+            self.key_algorithm = ord(self.read_byte())
+            self.hash_algorithm = ord(self.read_byte())
+            self.data = self.input
+
+        def body(self):
+            return pack('!B', self.key_algorithm) + pack('!B', self.hash_algorithm) + self.data
 
     hash_algorithms = {
         1: 'MD5',
