@@ -136,19 +136,18 @@ class Packet(object):
                 tag, head_length, data_length = Packet.parse_old_format(input_data)
             input_data = input_data[head_length:]
             if tag:
-              packet_class = False
               try:
                   packet_class = Packet.tags[tag]
-
-                  packet = packet_class()
-                  packet.tag = tag
-                  packet.input = input_data[:data_length]
-                  packet.length = data_length
-                  packet.read()
-                  packet.input = None
-                  packet.length = None
               except KeyError:
-                  """ Eat the error """
+                  packet_class = Packet
+
+              packet = packet_class()
+              packet.tag = tag
+              packet.input = input_data[:data_length]
+              packet.length = data_length
+              packet.read()
+              packet.input = None
+              packet.length = None
         return (packet, head_length + data_length)
 
     @classmethod
@@ -196,7 +195,7 @@ class Packet(object):
         self.data = data
 
     def read(self):
-      """ Implement in subclass """
+        self.data = self.input # Will normally be overridden by subclasses
 
     def body(self):
         return self.data # Will normally be overridden by subclasses
@@ -439,18 +438,20 @@ class SignaturePacket(Packet):
             length = unpack('!L', input_data[1:5])[0]
         input_data = input_data[length_of_length:] # Chop off length header
         tag = ord(input_data[0:1])
+
         try:
             klass = cls.subpacket_types[tag]
-
-            packet = klass()
-            packet.tag = tag
-            packet.input = input_data[1:length]
-            packet.length = length-1
-            packet.read()
-            packet.input = None
-            packet.length = None
         except KeyError:
-            packet = None # Eat error
+            klass = SignaturePacket.Subpacket
+
+        packet = klass()
+        packet.tag = tag
+        packet.input = input_data[1:length]
+        packet.length = length-1
+        packet.read()
+        packet.input = None
+        packet.length = None
+
         input_data = input_data[length:] # Chop off the data from this packet
         return (packet, length_of_length + length)
 
