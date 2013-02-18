@@ -287,6 +287,7 @@ class SignaturePacket(Packet):
             user_id = data[1].body()
             data = key + pack('!B', 0xB4) + pack('!L', len(user_id)) + user_id
         self.data = data # Store to-be-signed data in here until the signing happens
+        self.hash_head = None
 
     def sign_data(self, signers):
         """ self.data must be set to the data to sign (done by constructor)
