@@ -490,7 +490,7 @@ class SignaturePacket(Packet):
 
     class ExportableCertificationPacket(Subpacket):
         def read(self):
-            self.data = ord(self.input) == 0
+            self.data = ord(self.input) != 0
 
         def body(self):
             return pack('!B', self.data and 1 or 0)
