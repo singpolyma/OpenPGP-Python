@@ -670,7 +670,12 @@ class SignaturePacket(Packet):
             return self.data
 
     class ReasonforRevocationPacket(Subpacket):
-        pass # TODO
+        def read(self):
+            self.code = ord(self.read_byte())
+            self.data = self.input
+
+        def body(self):
+            return pack('!B', self.code) + self.data
 
     class FeaturesPacket(KeyFlagsPacket):
         pass # All implemented in parent
