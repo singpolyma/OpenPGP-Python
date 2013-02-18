@@ -511,7 +511,11 @@ class SignaturePacket(Packet):
             return self.data + pack('!B', 0)
 
     class RevocablePacket(Subpacket):
-        pass # TODO
+        def read(self):
+            self.data = ord(self.input) != 0
+
+        def body(self):
+            return pack('!B', self.data and 1 or 0)
 
     class KeyExpirationTimePacket(Subpacket):
         def read(self):
