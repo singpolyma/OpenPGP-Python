@@ -885,7 +885,7 @@ class PublicSubkeyPacket(PublicKeyPacket):
         http://tools.ietf.org/html/rfc4880#section-11.1
         http://tools.ietf.org/html/rfc4880#section-12
     """
-    pass # TODO
+    pass
 
 class SecretKeyPacket(PublicKeyPacket):
     """ OpenPGP Secret-Key packet (tag 5).
@@ -979,7 +979,7 @@ class SecretSubkeyPacket(SecretKeyPacket):
         http://tools.ietf.org/html/rfc4880#section-11.2
         http://tools.ietf.org/html/rfc4880#section-12
     """
-    pass # TODO
+    pass
 
 class CompressedDataPacket(Packet):
     """ OpenPGP Compressed Data packet (tag 8).
@@ -1069,7 +1069,7 @@ class TrustPacket(Packet):
     """ OpenPGP Trust packet (tag 12).
         http://tools.ietf.org/html/rfc4880#section-5.10
     """
-    pass # TODO
+    pass # Data is implementation-specific
 
 class UserIDPacket(Packet):
     """ OpenPGP User ID packet (tag 13).
@@ -1148,7 +1148,7 @@ class ExperimentalPacket(Packet):
     """ OpenPGP Private or Experimental packet (tags 60..63).
         http://tools.ietf.org/html/rfc4880#section-4.3
     """
-    pass # TODO
+    pass
 
 Packet.tags = {
      1: AsymmetricSessionKeyPacket, # Public-Key Encrypted Session Key
