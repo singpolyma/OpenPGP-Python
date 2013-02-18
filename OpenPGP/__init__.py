@@ -308,7 +308,7 @@ class SignaturePacket(Packet):
         if self.version == 2 or self.version == 3:
             assert(ord(self.read_byte()) == 5);
             self.signature_type = ord(self.read_byte())
-            creation_type = this.read_timestamp()
+            creation_time = self.read_timestamp()
             keyid = self.read_bytes(8)
             keyidHex = '';
             for i in range(0, len(keyid)): # Store KeyID in Hex
@@ -324,7 +324,7 @@ class SignaturePacket(Packet):
             self.hash_algorithm = ord(self.read_byte())
             self.hash_head = self.read_unpacked(2, '!H')
             self.data = []
-            while len(self.input > 0):
+            while len(self.input) > 0:
                 self.data += [self.read_mpi()]
         elif self.version == 4:
             self.signature_type = ord(self.read_byte())
