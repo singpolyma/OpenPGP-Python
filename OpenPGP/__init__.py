@@ -575,7 +575,24 @@ class SignaturePacket(Packet):
             return b
 
     class NotationDataPacket(Subpacket):
-        pass # TODO
+        def read(self):
+            flags = self.read_bytes(4)
+            namelen = self.read_unpacked(2, '!H')
+            datalen = self.read_unpacked(2, '!H')
+            self.human_readable = ord(flags[0:1]) & 0x80 == 0x80
+            self.name = self.read_bytes(namelen).decode('utf-8')
+            self.data = self.read_bytes(datalen)
+            if self.human_readable:
+                self.data = self.data.decode('utf-8')
+
+        def body(self):
+            name_bytes = self.name.encode('utf-8')
+            data_bytes = self.data
+            if self.human_readable:
+                data_bytes = data_bytes.encode('utf-8')
+            return pack('!B', self.human_readable and 0x80 or 0x00) + b'\0\0\0' + \
+                pack('!H', len(name_bytes)) + pack('!H', len(data_bytes)) + \
+                name_bytes + data_bytes
 
     class PreferredHashAlgorithmsPacket(Subpacket):
         pass # TODO
