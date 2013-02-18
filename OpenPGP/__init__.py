@@ -489,7 +489,11 @@ class SignaturePacket(Packet):
             return pack('!L', self.data)
 
     class ExportableCertificationPacket(Subpacket):
-        pass # TODO
+        def read(self):
+            self.data = ord(self.input) == 0
+
+        def body(self):
+            return pack('!B', self.data and 1 or 0)
 
     class TrustSignaturePacket(Subpacket):
         pass # TODO
