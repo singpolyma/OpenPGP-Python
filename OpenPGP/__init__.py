@@ -496,7 +496,12 @@ class SignaturePacket(Packet):
             return pack('!B', self.data and 1 or 0)
 
     class TrustSignaturePacket(Subpacket):
-        pass # TODO
+        def read(self):
+            self.depth = ord(self.input[0:1])
+            self.trust = ord(self.input[1:2])
+
+        def body(self):
+            return pack('!B', self.depth) + pack('!B', self.trust)
 
     class RegularExpressionPacket(Subpacket):
         pass # TODO
