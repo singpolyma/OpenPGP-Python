@@ -297,7 +297,7 @@ class SignaturePacket(Packet):
         signer = signers[self.key_algorithm_name()][self.hash_algorithm_name()]
         self.data = signer(self.data + self.trailer)
         if isinstance(self.data, long):
-            data = '%X' % self.data
+            data = '%02X' % self.data
             self.data = ''
             for i in range(0, len(data), 2):
                 self.data += pack('!B', int(data[i:i+2], 16))
@@ -305,8 +305,27 @@ class SignaturePacket(Packet):
 
     def read(self):
         self.version = ord(self.read_byte())
-        if self.version == 3:
-            pass # TODO: V3 sigs
+        if self.version == 2 or self.version == 3:
+            assert(ord(self.read_byte()) == 5);
+            self.signature_type = ord(self.read_byte())
+            creation_type = this.read_timestamp()
+            keyid = self.read_bytes(8)
+            keyidHex = '';
+            for i in range(0, len(keyid)): # Store KeyID in Hex
+                keyidHex += '%02X' % ord(keyid[i:i+1])
+
+            self.hashed_subpackets = []
+            self.unhashed_subpackets = [
+                SignaturePacket.SignatureCreationTimePacket(creation_time),
+                SignaturePacket.IssuerPacket(keyidHex)
+            ]
+
+            self.key_algorithm = ord(self.read_byte())
+            self.hash_algorithm = ord(self.read_byte())
+            self.hash_head = self.read_unpacked(2, '!H')
+            self.data = []
+            while len(self.input > 0):
+                self.data += [self.read_mpi()]
         elif self.version == 4:
             self.signature_type = ord(self.read_byte())
             self.key_algorithm = ord(self.read_byte())
@@ -342,19 +361,42 @@ class SignaturePacket(Packet):
         return body
 
     def body(self, trailer=False):
-        if not self.trailer:
-            self.trailer = self.calculate_trailer()
-        body = self.trailer[0:-6]
+        if self.version == 2 or self.version == 3:
+            body = pack('!B', self.version) + pack('!B', 5) + pack('!B', self.signature_type)
 
-        unhashed_subpackets = b''
-        for p in self.unhashed_subpackets:
-            unhashed_subpackets += p.to_bytes()
-        body += pack('!H', len(unhashed_subpackets)) + unhashed_subpackets
+            for p in self.unhashed_subpackets:
+                if isinstance(p, SignaturePacket.SignatureCreationTimePacket):
+                    body += pack('!L', p.data)
+                    break
 
-        body += pack('!H', self.hash_head)
-        body += pack('!H', bitlength(self.data)) + self.data
+            for p in self.unhashed_subpackets:
+                if isinstance(p, SignaturePacket.IssuerPacket):
+                    for i in range(0, len(p.data), 2):
+                        body += pack('!B', int(p.data[i:i+2], 16))
+                    break
 
-        return body
+            body += pack('!B', self.key_algorithm)
+            body += pack('!B', self.hash_algorithm)
+            body += pack('!H', self.hash_head)
+
+            for mpi in self.data:
+                body += pack('!H', bitlength(mpi)) + mpi
+
+            return body
+        else:
+            if not self.trailer:
+                self.trailer = self.calculate_trailer()
+            body = self.trailer[0:-6]
+
+            unhashed_subpackets = b''
+            for p in self.unhashed_subpackets:
+                unhashed_subpackets += p.to_bytes()
+            body += pack('!H', len(unhashed_subpackets)) + unhashed_subpackets
+
+            body += pack('!H', self.hash_head)
+            body += pack('!H', bitlength(self.data)) + self.data
+
+            return body
 
     def key_algorithm_name(self):
         return PublicKeyPacket.algorithms[self.key_algorithm]
