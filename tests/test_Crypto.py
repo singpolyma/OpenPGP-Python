@@ -35,3 +35,12 @@ class TestMessageVerification:
 
     #def testUncompressedOpsDSAsha384(self):
     #    self.oneMessageDSA('pubring.gpg', 'uncompressed-ops-dsa-sha384.gpg')
+
+class KeyVerification:
+    def oneKeyRSA(self, path):
+        m = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/' + path, 'rb').read())
+        verify = OpenPGP.Crypt.RSA(m);
+        nose.tools.assert_equal(verify.verify(m), True);
+
+    def testHelloKey(self):
+        self.oneKeyRSA("helloKey.gpg")
