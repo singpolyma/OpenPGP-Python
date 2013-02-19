@@ -3,6 +3,7 @@ import Crypto.PublicKey.RSA
 import Crypto.Util.number
 import OpenPGP
 import hashlib, math
+import sys
 
 class RSA:
     """ A wrapper for using the classes from OpenPGP.py with PyCrypto """
@@ -20,16 +21,16 @@ class RSA:
         if isinstance(self._key, OpenPGP.Message):
             for p in self._key:
                 if isinstance(p, OpenPGP.PublicKeyPacket):
-                    if not keyid or p.fingerprint[len(keyid)*-1:].upper() == keyid.upper():
+                    if not keyid or p.fingerprint()[len(keyid)*-1:].upper() == keyid.upper():
                         return p
         return self._key
 
     def public_key(self, keyid=None):
-        """ Get RSAobj for the public key """
+        """ Get _RSAobj for the public key """
         return self.convert_public_key(self.key(keyid))
 
     def private_key(self, keyid=None):
-        """ Get RSAobj for the public key """
+        """ Get _RSAobj for the public key """
         return self.convert_private_key(self.key(keyid))
 
     def _emsa_pkcs1_v1_5_encode(self, m, emLen, hashName):
@@ -38,34 +39,34 @@ class RSA:
 
         # http://tools.ietf.org/html/rfc3447#page-43
         if hashName == 'MD2':
-            t = '\x30\x20\x30\x0c\x06\x08\x2a\x86\x48\x86\xf7\x0d\x02\x02\x05\x00\x04\x10'
+            t = b'\x30\x20\x30\x0c\x06\x08\x2a\x86\x48\x86\xf7\x0d\x02\x02\x05\x00\x04\x10'
             pass # TODO
         elif hashName == 'MD5':
-            t = '\x30\x20\x30\x0c\x06\x08\x2a\x86\x48\x86\xf7\x0d\x02\x05\x05\x00\x04\x10'
+            t = b'\x30\x20\x30\x0c\x06\x08\x2a\x86\x48\x86\xf7\x0d\x02\x05\x05\x00\x04\x10'
             t += hashlib.md5(m).digest()
         elif hashName == 'SHA1':
-            t = '\x30\x21\x30\x09\x06\x05\x2b\x0e\x03\x02\x1a\x05\x00\x04\x14'
+            t = b'\x30\x21\x30\x09\x06\x05\x2b\x0e\x03\x02\x1a\x05\x00\x04\x14'
             t += hashlib.sha1(m).digest()
         elif hashName == 'SHA256':
-            t = '\x30\x31\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x01\x05\x00\x04\x20'
+            t = b'\x30\x31\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x01\x05\x00\x04\x20'
             t += hashlib.sha256(m).digest()
         elif hashName == 'SHA384':
-            t = '\x30\x41\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x02\x05\x00\x04\x30'
+            t = b'\x30\x41\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x02\x05\x00\x04\x30'
             t += hashlib.sha384(m).digest()
         elif hashName == 'SHA512':
-            t = '\x30\x51\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x03\x05\x00\x04\x40'
+            t = b'\x30\x51\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x03\x05\x00\x04\x40'
             t += hashlib.sha512(m).digest()
 
         if emLen < len(t) + 11:
             raise 'Intended encoded message length too short'
 
-        ps = '\xff' * (emLen - len(t) - 3)
+        ps = b'\xff' * (emLen - len(t) - 3)
 
-        a = '\0\1'+ps+'\0'+t
+        a = b'\0\1'+ps+b'\0'+t
         return a
 
     def verify(self, packet, index=0):
-        """ Pass a message to verify with this key, or a key (OpenPGP or RSAobj) to check this message with
+        """ Pass a message to verify with this key, or a key (OpenPGP or _RSAobj) to check this message with
             Second optional parameter to specify which signature to verify (if there is more than one)
         """
         packet = self._parse_packet(packet)
@@ -81,7 +82,7 @@ class RSA:
             signature_packet, data_packet = self._message.signature_and_data(index)
             if not self._message or signature_packet.key_algorithm_name() != 'RSA':
                 return None
-            if not isinstance(packet, Crypto.PublicKey.RSA.RSAobj):
+            if not isinstance(packet, Crypto.PublicKey.RSA._RSAobj):
                 packet = self.__class__(packet).public_key(signature_packet.issuer())
             return self._message.verify({'RSA': {signature_packet.hash_algorithm_name(): \
                                   lambda m,s: packet.verify(self._emsa_pkcs1_v1_5_encode(m, packet.size()/8.0, signature_packet.hash_algorithm_name()), (Crypto.Util.number.bytes_to_long(s),)) \
@@ -93,7 +94,7 @@ class RSA:
         else:
             packet = self._parse_packet(packet)
 
-        if isinstance(packet, OpenPGP.SecretKeyPacket) or isinstance(packet, Crypto.PublicKey.RSA.RSAobj) or (hasattr(packet, '__getitem__') and isinstance(packet[0], OpenPGP.SecretKeyPacket)):
+        if isinstance(packet, OpenPGP.SecretKeyPacket) or isinstance(packet, Crypto.PublicKey.RSA._RSAobj) or (hasattr(packet, '__getitem__') and isinstance(packet[0], OpenPGP.SecretKeyPacket)):
             key = packet
             message = self.message
         else:
@@ -106,10 +107,10 @@ class RSA:
         if isinstance(message, OpenPGP.Message):
             message = message.signature_and_data()[1]
 
-        if not isinstance(key, Crypto.PublicKey.RSA.RSAobj):
+        if not isinstance(key, Crypto.PublicKey.RSA._RSAobj):
             key = self.__class__(key)
             if not keyid:
-                keyid = key._key.fingerprint()[-16:]
+                keyid = key.key().fingerprint()[-16:]
             key = key.private_key(keyid)
         sig = OpenPGP.SignaturePacket(message, 'RSA', hash.upper())
         sig.hashed_subpackets.append(OpenPGP.SignaturePacket.IssuerPacket(keyid))
@@ -149,7 +150,7 @@ class RSA:
         if isinstance(packet, OpenPGP.Packet) or isinstance(packet, OpenPGP.Message):
             return packet
         elif isinstance(packet, tuple) or isinstance(packet, list):
-            if isinstance(packet[0], long):
+            if sys.version_info.major == 2 and isinstance(packet[0], long) or isinstance(packet[0], int):
                 data = []
                 for i in packet:
                     data.append(Crypto.Util.number.long_to_bytes(i)) # OpenPGP likes bytes
@@ -161,7 +162,7 @@ class RSA:
 
     @classmethod
     def convert_key(cls, packet, private=False):
-        if isinstance(packet, Crypto.PublicKey.RSA.RSAobj):
+        if isinstance(packet, Crypto.PublicKey.RSA._RSAobj):
             return packet
         packet = cls._parse_packet(packet)
         if isinstance(packet, OpenPGP.Message):
@@ -170,7 +171,7 @@ class RSA:
         public = (Crypto.Util.number.bytes_to_long(packet.key['n']), Crypto.Util.number.bytes_to_long(packet.key['e']))
         if private:
             private =  (Crypto.Util.number.bytes_to_long(packet.key['d']),)
-            if packet.key.has_key('p'): # Has optional parts
+            if 'p' in packet.key: # Has optional parts
                 private += (Crypto.Util.number.bytes_to_long(packet.key['p']), Crypto.Util.number.bytes_to_long(packet.key['q']), Crypto.Util.number.bytes_to_long(packet.key['u']))
             return Crypto.PublicKey.RSA.construct(public + private)
         else:

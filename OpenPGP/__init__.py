@@ -7,6 +7,7 @@ from math import floor, log
 import zlib, bz2
 import hashlib
 import re
+import sys
 
 def bitlength(data):
     """ http://tools.ietf.org/html/rfc4880#section-12.2 """
@@ -287,18 +288,19 @@ class SignaturePacket(Packet):
             user_id = data[1].body()
             data = key + pack('!B', 0xB4) + pack('!L', len(user_id)) + user_id
         self.data = data # Store to-be-signed data in here until the signing happens
+        self.trailer = None
         self.hash_head = None
 
     def sign_data(self, signers):
         """ self.data must be set to the data to sign (done by constructor)
             signers in the same format as verifiers for Message.
         """
-        self.trailer = self.body(True)
+        self.trailer = self.calculate_trailer()
         signer = signers[self.key_algorithm_name()][self.hash_algorithm_name()]
         self.data = signer(self.data + self.trailer)
-        if isinstance(self.data, long):
+        if sys.version_info.major == 2 and isinstance(self.data, long) or isinstance(self.data, int):
             data = '%02X' % self.data
-            self.data = ''
+            self.data = b''
             for i in range(0, len(data), 2):
                 self.data += pack('!B', int(data[i:i+2], 16))
         self.hash_head = unpack('!H', self.data[0:2])[0]
@@ -347,12 +349,13 @@ class SignaturePacket(Packet):
 
     def calculate_trailer(self):
         # The trailer is just the top of the body plus some crap
-        return self.body_start() + pack('!B', 4) + pack('!B', 0xff) + pack('!L', len(body))
+        body = self.body_start()
+        return body + pack('!B', 4) + pack('!B', 0xff) + pack('!L', len(body))
 
     def body_start(self):
         body = pack('!B', 4) + pack('!B', self.signature_type) + pack('!B', self.key_algorithm) + pack('!B', self.hash_algorithm)
 
-        hashed_subpackets = ''
+        hashed_subpackets = b''
         for p in self.hashed_subpackets:
             hashed_subpackets += p.to_bytes()
         body += pack('!H', len(hashed_subpackets)) + hashed_subpackets
@@ -1046,16 +1049,16 @@ class LiteralDataPacket(Packet):
             data = data.encode('utf-8')
         self.data = data
         self.format = format
-        self.filename = filename
+        self.filename = filename.encode('utf-8')
         self.timestamp = timestamp
 
     def normalize(self):
         if self.format == 'u' or self.format == 't': # Normalize line endings
-            self.data = self.data.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\r\n")
+            self.data = self.data.replace(b"\r\n", b"\n").replace(b"\r", b"\n").replace(b"\n", b"\r\n")
 
     def read(self):
         self.size = self.length - 1 - 4
-        self.format = self.read_byte()
+        self.format = self.read_byte().decode('ascii')
         filename_length = ord(self.read_byte())
         self.size -= filename_length
         self.filename = self.read_bytes(filename_length)
@@ -1063,7 +1066,7 @@ class LiteralDataPacket(Packet):
         self.data = self.read_bytes(self.size)
 
     def body(self):
-        return self.format + pack('!B', len(self.filename)) + self.filename + pack('!L', int(self.timestamp)) + self.data
+        return self.format.encode('ascii') + pack('!B', len(self.filename)) + self.filename + pack('!L', int(self.timestamp)) + self.data
 
 class TrustPacket(Packet):
     """ OpenPGP Trust packet (tag 12).
