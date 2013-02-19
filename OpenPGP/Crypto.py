@@ -150,7 +150,7 @@ class RSA:
         if isinstance(packet, OpenPGP.Packet) or isinstance(packet, OpenPGP.Message):
             return packet
         elif isinstance(packet, tuple) or isinstance(packet, list):
-            if sys.version_info.major == 2 and isinstance(packet[0], long) or isinstance(packet[0], int):
+            if sys.version_info[0] == 2 and isinstance(packet[0], long) or isinstance(packet[0], int):
                 data = []
                 for i in packet:
                     data.append(Crypto.Util.number.long_to_bytes(i)) # OpenPGP likes bytes

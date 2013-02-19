@@ -298,7 +298,7 @@ class SignaturePacket(Packet):
         self.trailer = self.calculate_trailer()
         signer = signers[self.key_algorithm_name()][self.hash_algorithm_name()]
         self.data = signer(self.data + self.trailer)
-        if sys.version_info.major == 2 and isinstance(self.data, long) or isinstance(self.data, int):
+        if sys.version_info[0] == 2 and isinstance(self.data, long) or isinstance(self.data, int):
             data = '%02X' % self.data
             self.data = b''
             for i in range(0, len(data), 2):
