@@ -356,12 +356,17 @@ class SignaturePacket(Packet):
         """
         self.trailer = self.calculate_trailer()
         signer = signers[self.key_algorithm_name()][self.hash_algorithm_name()]
-        self.data = signer(self.data + self.trailer)
-        if sys.version_info[0] == 2 and isinstance(self.data, long) or isinstance(self.data, int):
-            data = '%02X' % self.data
-            self.data = b''
-            for i in range(0, len(data), 2):
-                self.data += pack('!B', int(data[i:i+2], 16))
+        data = signer(self.data + self.trailer)
+        self.data = []
+        for mpi in data:
+            if sys.version_info[0] == 2 and isinstance(self.data, long) or isinstance(self.data, int):
+                hex_mpi = '%02X' % mpi
+                final = b''
+                for i in range(0, len(hex_mpi), 2):
+                    final += pack('!B', int(hex_mpi[i:i+2], 16))
+                self.data.append(final)
+            else:
+                self.data.append(mpi)
         self.hash_head = unpack('!H', b''.join(self.data)[0:2])[0]
 
     def read(self):
@@ -834,12 +839,12 @@ class PublicKeyPacket(Packet):
         super(PublicKeyPacket, self).__init__()
         self._fingerprint = None
         self.version = version
-        self.algorithm = algorithm
+        self.key_algorithm = algorithm
         self.timestamp = int(timestamp)
         if isinstance(keydata, tuple) or isinstance(keydata, list):
             self.key = {}
-            for i in range(0, min(len(keydata), len(self.key_fields[self.algorithm]))):
-                 self.key[self.key_fields[self.algorithm][i]] = keydata[i]
+            for i in range(0, min(len(keydata), len(self.key_fields[self.key_algorithm]))):
+                 self.key[self.key_fields[self.key_algorithm][i]] = keydata[i]
         else:
             self.key = keydata
 
@@ -870,36 +875,39 @@ class PublicKeyPacket(Packet):
                     return self.timestamp + s.data
         return None # Never expires
 
+    def key_algorithm_name(self):
+        return self.__class__.algorithms[self.key_algorithm]
+
     def read(self):
         """ http://tools.ietf.org/html/rfc4880#section-5.5.2 """
         self.version = ord(self.read_byte())
         if self.version == 3:
             self.timestamp = self.read_timestamp()
             self.v3_days_of_validity = self.read_unpacked(2, '!H')
-            self.algorithm = ord(self.read_byte())
+            self.key_algorithm = ord(self.read_byte())
             self.read_key_material()
         elif self.version == 4:
             self.timestamp = self.read_timestamp()
-            self.algorithm = ord(self.read_byte())
+            self.key_algorithm = ord(self.read_byte())
             self.read_key_material()
 
     def read_key_material(self):
         self.key = {}
-        for field in self.key_fields[self.algorithm]:
+        for field in self.key_fields[self.key_algorithm]:
             self.key[field] = self.read_mpi()
         self.key_id = self.fingerprint()[-8:]
 
     def fingerprint_material(self):
         if self.version == 2 or self.version == 3:
             material = []
-            for i in self.key_fields[self.algorithm]:
+            for i in self.key_fields[self.key_algorithm]:
                 material += [pack('!H', bitlength(self.key[i]))]
                 material += [self.key[i]]
             return material
         elif self.version == 4:
-            head = [pack('!B', 0x99), None, pack('!B', self.version), pack('!L', self.timestamp), pack('!B', self.algorithm)]
+            head = [pack('!B', 0x99), None, pack('!B', self.version), pack('!L', self.timestamp), pack('!B', self.key_algorithm)]
             material = b''
-            for i in self.key_fields[self.algorithm]:
+            for i in self.key_fields[self.key_algorithm]:
                 material += pack('!H', bitlength(self.key[i]))
                 material += self.key[i]
             head[1] = pack('!H', 6 + len(material))
@@ -921,7 +929,7 @@ class PublicKeyPacket(Packet):
         if self.version == 3:
             return b''.join([
                 pack('!B', self.version), pack('!L', self.timestamp),
-                pack('!H', self.v3_days_of_validity), pack('!B', self.algorithm)
+                pack('!H', self.v3_days_of_validity), pack('!B', self.key_algorithm)
             ] + self.fingerprint_material())
         elif self.version == 4:
             return b''.join(self.fingerprint_material()[2:])
@@ -963,9 +971,9 @@ class SecretKeyPacket(PublicKeyPacket):
         super(SecretKeyPacket, self).__init__(keydata, version, algorithm, timestamp)
         self.s2k_useage = 0
         if isinstance(keydata, tuple) or isinstance(keydata, list):
-            public_len = len(self.key_fields[self.algorithm])
+            public_len = len(self.key_fields[self.key_algorithm])
             for i in range(public_len, len(keydata)):
-                 self.key[self.secret_key_fields[self.algorithm][i-public_len]] = keydata[i]
+                 self.key[self.secret_key_fields[self.key_algorithm][i-public_len]] = keydata[i]
 
     def read(self):
         super(SecretKeyPacket, self).read() # All the fields from PublicKey
@@ -992,7 +1000,7 @@ class SecretKeyPacket(PublicKeyPacket):
             return None # Not decrypted yet
         self.input = self.data
 
-        for field in self.secret_key_fields[self.algorithm]:
+        for field in self.secret_key_fields[self.key_algorithm]:
             self.key[field] = self.read_mpi()
 
         # TODO: Validate checksum?
@@ -1017,7 +1025,7 @@ class SecretKeyPacket(PublicKeyPacket):
         if self.s2k_useage > 0:
             b += self.encrypted_data
         else:
-            for f in self.secret_key_fields[self.algorithm]:
+            for f in self.secret_key_fields[self.key_algorithm]:
                 f = self.key[f]
                 secret_material += pack('!H', bitlength(f))
                 secret_material += f
