@@ -119,9 +119,8 @@ class Wrapper:
             sig.hashed_subpackets.append(OpenPGP.SignaturePacket.IssuerPacket(keyid))
 
         def doDSA(h, m):
-            r, s = key.sign(h.new(m).digest()[0:int(Crypto.Util.number.size(key.q) / 8)],
-                Crypto.Random.random.StrongRandom().randint(1,key.q-1))
-            return [Crypto.Util.number.long_to_bytes(r), Crypto.Util.number.long_to_bytes(s)]
+            return list(key.sign(h.new(m).digest()[0:int(Crypto.Util.number.size(key.q) / 8)],
+                Crypto.Random.random.StrongRandom().randint(1,key.q-1)))
 
         sig.sign_data({'RSA': {
                 'MD5':       lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.MD5.new(m))],
@@ -143,6 +142,7 @@ class Wrapper:
 
         return OpenPGP.Message([sig, message])
 
+    # TODO: merge this with the normal sign function
     def sign_key_userid(self, packet, hash='SHA256', keyid=None):
         if isinstance(packet, list):
             packet = OpenPGP.Message(packet)
@@ -158,7 +158,10 @@ class Wrapper:
 
         key = self.private_key(keyid)
 
-        sig = packet.signature_and_data()[1]
+        sig = None
+        for p in packet:
+            if isinstance(p, OpenPGP.SignaturePacket):
+                sig = p
         if not sig:
             sig = OpenPGP.SignaturePacket(packet, 'RSA', hash.upper())
             sig.signature_type = 0x13
@@ -166,7 +169,27 @@ class Wrapper:
             sig.hashed_subpackets.append(OpenPGP.SignaturePacket.IssuerPacket(keyid))
             packet.append(sig)
 
-        sig.sign_data({'RSA': {hash: lambda m: key.sign(self._emsa_pkcs1_v1_5_encode(m, key.size()/8.0, hash), None)[0]}})
+        def doDSA(h, m):
+            return list(key.sign(h.new(m).digest()[0:int(Crypto.Util.number.size(key.q) / 8)],
+                Crypto.Random.random.StrongRandom().randint(1,key.q-1)))
+
+        sig.sign_data({'RSA': {
+                'MD5':       lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.MD5.new(m))],
+                'RIPEMD160': lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.RIPEMD.new(m))],
+                'SHA1':      lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA.new(m))],
+                'SHA224':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA224.new(m))],
+                'SHA256':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA256.new(m))],
+                'SHA384':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA384.new(m))],
+                'SHA512':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA512.new(m))],
+            }, 'DSA': {
+                'MD5':       lambda m: doDSA(Crypto.Hash.MD5, m),
+                'RIPEMD160': lambda m: doDSA(Crypto.Hash.RIPEMD, m),
+                'SHA1':      lambda m: doDSA(Crypto.Hash.SHA, m),
+                'SHA224':    lambda m: doDSA(Crypto.Hash.SHA224, m),
+                'SHA256':    lambda m: doDSA(Crypto.Hash.SHA256, m),
+                'SHA384':    lambda m: doDSA(Crypto.Hash.SHA384, m),
+                'SHA512':    lambda m: doDSA(Crypto.Hash.SHA512, m),
+            }})
 
         return packet
 

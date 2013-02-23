@@ -343,7 +343,7 @@ class SignaturePacket(Packet):
             data = data.encode('utf-8')
         elif isinstance(data, Message) and isinstance(data[0], PublicKeyPacket):
             # data is a message with PublicKey first, UserID second
-            key = ''.join(data[0].fingerprint_material())
+            key = b''.join(data[0].fingerprint_material())
             user_id = data[1].body()
             data = key + pack('!B', 0xB4) + pack('!L', len(user_id)) + user_id
         self.data = data # Store to-be-signed data in here until the signing happens
@@ -359,7 +359,7 @@ class SignaturePacket(Packet):
         data = signer(self.data + self.trailer)
         self.data = []
         for mpi in data:
-            if sys.version_info[0] == 2 and isinstance(self.data, long) or isinstance(self.data, int):
+            if sys.version_info[0] == 2 and isinstance(mpi, long) or isinstance(mpi, int):
                 hex_mpi = '%02X' % mpi
                 final = b''
                 for i in range(0, len(hex_mpi), 2):
@@ -729,7 +729,7 @@ class SignaturePacket(Packet):
               self.flags.append(ord(self.read_byte()))
 
         def body(self):
-            b = ''
+            b = b''
             for f in self.flags:
                 b += pack('!B', f)
             return b

@@ -1,12 +1,10 @@
 import Crypto.PublicKey.RSA
-import Crypto.Util.randpool
 import Crypto.Util.number
 import OpenPGP
 import OpenPGP.Crypto
 import sys
 
-pool = Crypto.Util.randpool.RandomPool()
-k = Crypto.PublicKey.RSA.generate(512, pool.get_bytes)
+k = Crypto.PublicKey.RSA.generate(1024)
 
 nkey = OpenPGP.SecretKeyPacket((
 	Crypto.Util.number.long_to_bytes(k.n),
@@ -19,7 +17,7 @@ nkey = OpenPGP.SecretKeyPacket((
 
 uid = OpenPGP.UserIDPacket('Test <test@example.com>')
 
-wkey = OpenPGP.Crypto.RSA(nkey)
+wkey = OpenPGP.Crypto.Wrapper(nkey)
 m = wkey.sign_key_userid([nkey, uid])
 
 sys.stdout.write(m.to_bytes())

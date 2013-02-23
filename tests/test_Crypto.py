@@ -2,6 +2,8 @@ import nose
 import os.path
 import OpenPGP
 import OpenPGP.Crypto
+import Crypto.Util
+import Crypto.PublicKey.RSA
 
 class TestMessageVerification:
     def oneMessage(self, pkey, path):
@@ -49,6 +51,26 @@ class TestKeyVerification:
         m = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/' + path, 'rb').read())
         verify = OpenPGP.Crypto.Wrapper(m);
         nose.tools.assert_equal(verify.verify(m), m.signatures());
+
+    def testSigningKeysRSA(self):
+        k = Crypto.PublicKey.RSA.generate(1024)
+
+        nkey = OpenPGP.SecretKeyPacket((
+            Crypto.Util.number.long_to_bytes(k.n),
+            Crypto.Util.number.long_to_bytes(k.e),
+            Crypto.Util.number.long_to_bytes(k.d),
+            Crypto.Util.number.long_to_bytes(k.p),
+            Crypto.Util.number.long_to_bytes(k.q),
+            Crypto.Util.number.long_to_bytes(k.u)
+        ))
+
+        uid = OpenPGP.UserIDPacket('Test <test@example.com>')
+
+        wkey = OpenPGP.Crypto.Wrapper(nkey)
+        m = wkey.sign_key_userid([nkey, uid]).to_bytes()
+        reparsedM = OpenPGP.Message.parse(m)
+
+        nose.tools.assert_equal(wkey.verify(reparsedM), reparsedM.signatures())
 
     def testHelloKey(self):
         self.oneKeyRSA("helloKey.gpg")
