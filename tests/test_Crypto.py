@@ -8,7 +8,7 @@ class TestMessageVerification:
         pkeyM = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/' + pkey, 'rb').read())
         m = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/' + path, 'rb').read())
         verify = OpenPGP.Crypto.RSA(pkeyM)
-        nose.tools.assert_equal(verify.verify(m), True)
+        nose.tools.assert_equal(verify.verify(m), m.signatures())
 
     def testUncompressedOpsRSA(self):
         self.oneMessageRSA('pubring.gpg', 'uncompressed-ops-rsa.gpg')
@@ -28,7 +28,7 @@ class TestMessageVerification:
         sign = OpenPGP.Crypto.RSA(wkey)
         m = sign.sign(data).to_bytes()
         reparsedM = OpenPGP.Message.parse(m)
-        nose.tools.assert_equal(sign.verify(reparsedM), True)
+        nose.tools.assert_equal(sign.verify(reparsedM), reparsedM.signatures())
 
     #def testUncompressedOpsDSA(self):
     #    self.oneMessageDSA('pubring.gpg', 'uncompressed-ops-dsa.gpg')
@@ -36,11 +36,11 @@ class TestMessageVerification:
     #def testUncompressedOpsDSAsha384(self):
     #    self.oneMessageDSA('pubring.gpg', 'uncompressed-ops-dsa-sha384.gpg')
 
-class KeyVerification:
+class TestKeyVerification:
     def oneKeyRSA(self, path):
         m = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/' + path, 'rb').read())
-        verify = OpenPGP.Crypt.RSA(m);
-        nose.tools.assert_equal(verify.verify(m), True);
+        verify = OpenPGP.Crypto.RSA(m);
+        nose.tools.assert_equal(verify.verify(m), m.signatures());
 
     def testHelloKey(self):
         self.oneKeyRSA("helloKey.gpg")

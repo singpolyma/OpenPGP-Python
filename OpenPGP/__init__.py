@@ -67,39 +67,98 @@ class Message(object):
             b += p.to_bytes()
         return b
 
-    def signature_and_data(self, index=0):
+    def signatures(self):
+        """ Extract signed objects from a well-formatted message
+            Recurses into CompressedDataPacket
+            http://tools.ietf.org/html/rfc4880#section-11
+        """
         msg = self
         while isinstance(msg[0], CompressedDataPacket):
             msg = msg[0]
 
-        i = 0
-        signature_packet = data_packet = None
+        key = None
+        userid = None
+        subkey = None
+        sigs = []
+        final_sigs = []
+
         for p in msg:
-            if isinstance(p, SignaturePacket):
-                if i == index:
-                    signature_packet = p
-                i += 1
-            elif isinstance(p, LiteralDataPacket):
-                data_packet = p
-            if signature_packet and data_packet:
-                break
+            if isinstance(p, LiteralDataPacket):
+                return [(p, list(filter(lambda x: isinstance(x, SignaturePacket), msg)))]
+            elif isinstance(p, PublicSubkeyPacket) or isinstance(p, SecretSubkeyPacket):
+                if userid:
+                    final_sigs.append((key, userid, sigs))
+                    userid = None
+                elif subkey:
+                    final_sigs.append((key, subkey, sigs))
+                    key = None
+                sigs = []
+                subkey = p
+            elif isinstance(p, PublicKeyPacket):
+                if userid:
+                    final_sigs.append((key, userid, sigs))
+                    userid = None
+                elif subkey:
+                    final_sigs.append((key, subkey, sigs))
+                    subkey = None
+                elif key:
+                    final_sigs.append((key, sigs))
+                    key = None
+                sigs = []
+                key = p
+            elif isinstance(p, UserIDPacket):
+                if userid:
+                    final_sigs.append((key, userid, sigs))
+                    userid = None
+                elif key:
+                    final_sigs.append((key, sigs))
+                sigs = []
+                userid = p
+            elif isinstance(p, SignaturePacket):
+                sigs.append(p)
 
-        return (signature_packet, data_packet)
+        if userid:
+            final_sigs.append((key, userid, sigs))
+        elif subkey:
+            final_sigs.append((key, subkey, sigs))
+        elif key:
+            final_sigs.append((key, sigs))
 
-    def verify(self, verifiers, index=0):
-       """ Function to verify signature number index
-           verifiers is an array of callbacks formatted like {'RSA': {'SHA256': CALLBACK}} that take two parameters: message and signature
+        return final_sigs
+
+    def verified_signatures(self, verifiers):
+       """ Function to extract verified signatures
+           verifiers is an array of callbacks formatted like {'RSA': {'SHA256': CALLBACK}} that take two parameters: raw message and signature packet
        """
-       signature_packet, data_packet = self.signature_and_data(index)
-       if not signature_packet or not data_packet:
-           return None # No signature or no data
+       signed = self.signatures()
+       vsigned = []
 
-       verifier = verifiers[signature_packet.key_algorithm_name()][signature_packet.hash_algorithm_name()]
-       if not verifier:
-           return None # No verifier
+       for sign in signed:
+           vsigs = []
+           for sig in sign[-1]:
+               verifier = verifiers[sig.key_algorithm_name()][sig.hash_algorithm_name()]
+               if verifier and self.verify_one(verifier, sign, sig):
+                   vsigs.append(sig)
+           vsigned.append(sign[:-1] + (vsigs,))
 
-       data_packet.normalize()
-       return verifier(data_packet.data + signature_packet.trailer, signature_packet.data)
+       return vsigned
+
+    def verify_one(self, verifier, sign, sig):
+        raw = None
+        if isinstance(sign[0], LiteralDataPacket):
+            sign[0].normalize()
+            raw = sign[0].data
+        elif len(sign) > 1 and isinstance(sign[1], UserIDPacket):
+            raw = b''.join(sign[0].fingerprint_material() + [pack('!B', 0xB4),
+                  pack('!L', len(sign[1].body())), sign[1].body()])
+        elif len(sign) > 1 and (isinstance(sign[1], PublicSubkeyPacket) or isinstance(sign[1], SecretSubkeyPacket)):
+            raw = b''.join(sign[0].fingerprint_material() + sign[1].fingerprint_material())
+        elif isinstance(sign[0], PublicKeyPacket):
+            raw = sign[0].fingerprint_material()
+        else:
+            raw = None
+
+        return verifier(raw + sig.trailer, sig)
 
     def __iter__(self):
         return iter(self._packets)
@@ -303,7 +362,7 @@ class SignaturePacket(Packet):
             self.data = b''
             for i in range(0, len(data), 2):
                 self.data += pack('!B', int(data[i:i+2], 16))
-        self.hash_head = unpack('!H', self.data[0:2])[0]
+        self.hash_head = unpack('!H', b''.join(self.data)[0:2])[0]
 
     def read(self):
         self.version = ord(self.read_byte())
@@ -345,7 +404,9 @@ class SignaturePacket(Packet):
             self.unhashed_subpackets = self.get_subpackets(self.read_bytes(unhashed_size))
 
             self.hash_head = self.read_unpacked(2, '!H')
-            self.data = self.read_mpi()
+            self.data = []
+            while len(self.input) > 0:
+                self.data += [self.read_mpi()]
 
     def calculate_trailer(self):
         # The trailer is just the top of the body plus some crap
@@ -396,7 +457,8 @@ class SignaturePacket(Packet):
             body += pack('!H', len(unhashed_subpackets)) + unhashed_subpackets
 
             body += pack('!H', self.hash_head)
-            body += pack('!H', bitlength(self.data)) + self.data
+            for mpi in self.data:
+                body += pack('!H', bitlength(mpi)) + mpi
 
             return body
 

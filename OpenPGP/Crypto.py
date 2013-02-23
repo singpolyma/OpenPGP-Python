@@ -1,5 +1,13 @@
 from __future__ import absolute_import
 import Crypto.PublicKey.RSA
+import Crypto.Signature.PKCS1_v1_5
+import Crypto.Hash.MD5
+import Crypto.Hash.RIPEMD
+import Crypto.Hash.SHA
+import Crypto.Hash.SHA224
+import Crypto.Hash.SHA256
+import Crypto.Hash.SHA384
+import Crypto.Hash.SHA512
 import Crypto.Util.number
 import OpenPGP
 import hashlib, math
@@ -33,60 +41,36 @@ class RSA:
         """ Get _RSAobj for the public key """
         return self.convert_private_key(self.key(keyid))
 
-    def _emsa_pkcs1_v1_5_encode(self, m, emLen, hashName):
-        """ http://tools.ietf.org/html/rfc3447#section-9.2 """
-        emLen = int(math.ceil(emLen))
+    def verifier(self, h, m, s):
+        """ Used in implementation of verify """
+        key = self.public_key(s.issuer())
+        if not key:
+            return False
+        protocol = Crypto.Signature.PKCS1_v1_5.new(key)
+        return protocol.verify(h.new(m), s.data[0])
 
-        # http://tools.ietf.org/html/rfc3447#page-43
-        if hashName == 'MD2':
-            t = b'\x30\x20\x30\x0c\x06\x08\x2a\x86\x48\x86\xf7\x0d\x02\x02\x05\x00\x04\x10'
-            pass # TODO
-        elif hashName == 'MD5':
-            t = b'\x30\x20\x30\x0c\x06\x08\x2a\x86\x48\x86\xf7\x0d\x02\x05\x05\x00\x04\x10'
-            t += hashlib.md5(m).digest()
-        elif hashName == 'SHA1':
-            t = b'\x30\x21\x30\x09\x06\x05\x2b\x0e\x03\x02\x1a\x05\x00\x04\x14'
-            t += hashlib.sha1(m).digest()
-        elif hashName == 'SHA256':
-            t = b'\x30\x31\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x01\x05\x00\x04\x20'
-            t += hashlib.sha256(m).digest()
-        elif hashName == 'SHA384':
-            t = b'\x30\x41\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x02\x05\x00\x04\x30'
-            t += hashlib.sha384(m).digest()
-        elif hashName == 'SHA512':
-            t = b'\x30\x51\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x03\x05\x00\x04\x40'
-            t += hashlib.sha512(m).digest()
-
-        if emLen < len(t) + 11:
-            raise 'Intended encoded message length too short'
-
-        ps = b'\xff' * (emLen - len(t) - 3)
-
-        a = b'\0\1'+ps+b'\0'+t
-        return a
-
-    def verify(self, packet, index=0):
+    def verify(self, packet):
         """ Pass a message to verify with this key, or a key (OpenPGP or _RSAobj) to check this message with
             Second optional parameter to specify which signature to verify (if there is more than one)
         """
+        m = None
         packet = self._parse_packet(packet)
-        if isinstance(packet, OpenPGP.Message) and not isinstance(packet[0], OpenPGP.PublicKeyPacket):
-            signature_packet, data_packet = packet.signature_and_data(index)
-            key = self.public_key(signature_packet.issuer())
-            if not key or signature_packet.key_algorithm_name() != 'RSA':
-                return None
-            return packet.verify({'RSA': {signature_packet.hash_algorithm_name(): \
-                                  lambda m,s: key.verify(self._emsa_pkcs1_v1_5_encode(m, key.size()/8.0, signature_packet.hash_algorithm_name()), (Crypto.Util.number.bytes_to_long(s),)) \
-                                  }})
+        if not self._message:
+            m = packet
+            verifier = self.verifier
         else:
-            signature_packet, data_packet = self._message.signature_and_data(index)
-            if not self._message or signature_packet.key_algorithm_name() != 'RSA':
-                return None
-            if not isinstance(packet, Crypto.PublicKey.RSA._RSAobj):
-                packet = self.__class__(packet).public_key(signature_packet.issuer())
-            return self._message.verify({'RSA': {signature_packet.hash_algorithm_name(): \
-                                  lambda m,s: packet.verify(self._emsa_pkcs1_v1_5_encode(m, packet.size()/8.0, signature_packet.hash_algorithm_name()), (Crypto.Util.number.bytes_to_long(s),)) \
-                                  }})
+            m = self._message
+            verifier = self.__class__(packet).verifier
+
+        return m.verified_signatures({'RSA': {
+                'MD5':       lambda m, s: verifier(Crypto.Hash.MD5, m, s),
+                'RIPEMD160': lambda m, s: verifier(Crypto.Hash.RIPEMD, m, s),
+                'SHA1':      lambda m, s: verifier(Crypto.Hash.SHA, m, s),
+                'SHA224':    lambda m, s: verifier(Crypto.Hash.SHA224, m, s),
+                'SHA256':    lambda m, s: verifier(Crypto.Hash.SHA256, m, s),
+                'SHA384':    lambda m, s: verifier(Crypto.Hash.SHA384, m, s),
+                'SHA512':    lambda m, s: verifier(Crypto.Hash.SHA512, m, s),
+            }})
 
     def sign(self, packet, hash='SHA256', keyid=None):
         if self._key and not isinstance(packet, OpenPGP.Packet) and not isinstance(packet, OpenPGP.Message):
@@ -114,7 +98,16 @@ class RSA:
             key = key.private_key(keyid)
         sig = OpenPGP.SignaturePacket(message, 'RSA', hash.upper())
         sig.hashed_subpackets.append(OpenPGP.SignaturePacket.IssuerPacket(keyid))
-        sig.sign_data({'RSA': {hash: lambda m: key.sign(self._emsa_pkcs1_v1_5_encode(m, key.size()/8.0, hash), None)[0]}})
+
+        sig.sign_data({'RSA': {
+                'MD5':       lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.MD5.new(m))],
+                'RIPEMD160': lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.RIPEMD.new(m))],
+                'SHA1':      lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA.new(m))],
+                'SHA224':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA224.new(m))],
+                'SHA256':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA256.new(m))],
+                'SHA384':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA384.new(m))],
+                'SHA512':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA512.new(m))],
+            }})
 
         return OpenPGP.Message([sig, message])
 
@@ -147,7 +140,7 @@ class RSA:
 
     @classmethod
     def _parse_packet(cls, packet):
-        if isinstance(packet, OpenPGP.Packet) or isinstance(packet, OpenPGP.Message):
+        if isinstance(packet, OpenPGP.Packet) or isinstance(packet, OpenPGP.Message) or isinstance(packet, _RSAobj):
             return packet
         elif isinstance(packet, tuple) or isinstance(packet, list):
             if sys.version_info[0] == 2 and isinstance(packet[0], long) or isinstance(packet[0], int):
