@@ -878,7 +878,21 @@ class SymmetricSessionKeyPacket(Packet):
     """ OpenPGP Symmetric-Key Encrypted Session Key packet (tag 3).
         http://tools.ietf.org/html/rfc4880#section-5.3
     """
-    pass # TODO
+    def __init__(self, s2k=None, encrypted_data=b'', symmetric_algorithm=9, version=3):
+        self.version = version
+        self.symmetric_algorithm = symmetric_algorithm
+        self.s2k = s2k
+        self.encrypted_data = encrypted_data
+
+    def read(self):
+        self.version = ord(self.read_byte())
+        self.symmetric_algorithm = ord(self.read_byte())
+        self.s2k, s2k_bytes = S2K.parse(self.input)
+        self.encrypted_data = self.input[s2k_bytes:]
+
+    def body(self):
+        return pack('!B', self.version) + pack('!B', self.symmetric_algorithm) \
+            + self.s2k.to_bytes() + self.encrypted_data
 
 class OnePassSignaturePacket(Packet):
     """ OpenPGP One-Pass Signature packet (tag 4).
@@ -1278,11 +1292,20 @@ class UserAttributePacket(Packet):
     """
     pass # TODO
 
-class IntegrityProtectedDataPacket(Packet):
+class IntegrityProtectedDataPacket(EncryptedDataPacket):
     """ OpenPGP Sym. Encrypted Integrity Protected Data packet (tag 18).
         http://tools.ietf.org/html/rfc4880#section-5.13
     """
-    pass # TODO
+    def __init__(self, data=b'', version=1):
+        self.version = version
+        self.data = data
+
+    def read(self):
+        self.version = ord(self.read_byte())
+        self.data = self.input
+
+    def body(self):
+        return pack('!B', self.version) + self.data
 
 class ModificationDetectionCodePacket(Packet):
     """ OpenPGP Modification Detection Code packet (tag 19).

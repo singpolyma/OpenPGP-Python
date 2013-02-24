@@ -49,8 +49,8 @@ class TestMessageVerification:
 class TestKeyVerification:
     def oneKeyRSA(self, path):
         m = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/' + path, 'rb').read())
-        verify = OpenPGP.Crypto.Wrapper(m);
-        nose.tools.assert_equal(verify.verify(m), m.signatures());
+        verify = OpenPGP.Crypto.Wrapper(m)
+        nose.tools.assert_equal(verify.verify(m), m.signatures())
 
     def testSigningKeysRSA(self):
         k = Crypto.PublicKey.RSA.generate(1024)
@@ -74,3 +74,63 @@ class TestKeyVerification:
 
     def testHelloKey(self):
         self.oneKeyRSA("helloKey.gpg")
+
+class TestDecryption:
+    def oneSymmetric(self, pss, cnt, path):
+        m = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/' + path, 'rb').read())
+        m2 = OpenPGP.Crypto.Wrapper(m).decrypt_symmetric(pss)
+        while(isinstance(m2[0], OpenPGP.CompressedDataPacket)):
+            m2 = m2[0].data
+        for p in m2:
+            if(isinstance(p,OpenPGP.LiteralDataPacket)):
+                nose.tools.assert_equal(p.data, cnt)
+
+    def testDecryptAES(self):
+        self.oneSymmetric("hello", b"PGP\n", "symmetric-aes.gpg")
+
+    def testDecryptNoMDC(self):
+        self.oneSymmetric("hello", b"PGP\n", "symmetric-no-mdc.gpg")
+
+    def testDecrypt3DES(self):
+        self.oneSymmetric("hello", b"PGP\n", "symmetric-3des.gpg")
+
+    def testDecryptBlowfish(self):
+        self.oneSymmetric("hello", b"PGP\n", "symmetric-blowfish.gpg")
+
+    def testDecryptCAST5(self):
+        self.oneSymmetric("hello", b"PGP\n", "symmetric-cast5.gpg")
+
+    def testDecryptSessionKey(self):
+        self.oneSymmetric("hello", b"PGP\n", "symmetric-with-session-key.gpg")
+
+"""
+    def testDecryptAsymmetric(self):
+        $m = OpenPGP_Message::parse(file_get_contents(dirname(__FILE__) . '/data/hello.gpg'))
+        $key = OpenPGP_Message::parse(file_get_contents(dirname(__FILE__) . '/data/helloKey.gpg'))
+        $decryptor = new OpenPGP_Crypt_RSA($key)
+        $m2 = $decryptor->decrypt($m)
+        while($m2[0] instanceof OpenPGP_CompressedDataPacket) $m2 = $m2[0]->data
+        foreach($m2 as $p) {
+            if($p instanceof OpenPGP_LiteralDataPacket) {
+                self.assertEquals($p->data, b"hello\n")
+
+    def testDecryptSecretKey(self):
+        $key = OpenPGP_Message::parse(file_get_contents(dirname(__FILE__) . '/data/encryptedSecretKey.gpg'))
+        $skey = OpenPGP_Crypt_AES_TripleDES::decryptSecretKey("hello", $key[0])
+        self.assertSame(!!$skey, true)
+
+class TestEncryption:
+    def testEncryptSymmetric(self):
+        $data = new OpenPGP_LiteralDataPacket('This is text.', array('format' => 'u', 'filename' => 'stuff.txt'))
+        $encrypted = OpenPGP_Crypt_AES_TripleDES::encrypt('secret', new OpenPGP_Message(array($data)))
+        $decrypted = OpenPGP_Crypt_AES_TripleDES::decryptSymmetric('secret', $encrypted)
+        self.assertEquals($decrypted[0]->data, 'This is text.')
+
+    def testEncryptAsymmetric(self):
+        $key = OpenPGP_Message::parse(file_get_contents(dirname(__FILE__) . '/data/helloKey.gpg'))
+        $data = new OpenPGP_LiteralDataPacket('This is text.', array('format' => 'u', 'filename' => 'stuff.txt'))
+        $encrypted = OpenPGP_Crypt_AES_TripleDES::encrypt($key, new OpenPGP_Message(array($data)))
+        $decryptor = new OpenPGP_Crypt_RSA($key)
+        $decrypted = $decryptor->decrypt($encrypted)
+        self.assertEquals($decrypted[0]->data, b'This is text.')
+"""

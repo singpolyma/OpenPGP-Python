@@ -2,6 +2,10 @@ from __future__ import absolute_import
 import Crypto.Random.random
 import Crypto.PublicKey.RSA
 import Crypto.PublicKey.DSA
+import Crypto.Cipher.DES3
+import Crypto.Cipher.AES
+import Crypto.Cipher.Blowfish
+import Crypto.Cipher.CAST
 import Crypto.Signature.PKCS1_v1_5
 import Crypto.Hash.MD5
 import Crypto.Hash.RIPEMD
@@ -42,6 +46,16 @@ class Wrapper:
     def private_key(self, keyid=None):
         """ Get _RSAobj or _DSAobj for the public key """
         return self.convert_private_key(self.key(keyid))
+
+    def encrypted_data(self):
+        if not self._message:
+            return None
+
+        for p in self._message:
+            if isinstance(p, OpenPGP.EncryptedDataPacket):
+                return p
+
+        return None
 
     def verifier(self, h, m, s):
         """ Used in implementation of verify """
@@ -193,6 +207,69 @@ class Wrapper:
 
         return packet
 
+    def decrypt_symmetric(self, passphrase):
+        epacket = self.encrypted_data()
+        if hasattr(passphrase, 'encode'):
+            passphrase = passphrase.encode('utf-8')
+
+        decrypted = None
+        for p in self._message:
+            if isinstance(p, OpenPGP.SymmetricSessionKeyPacket):
+                if len(p.encrypted_data) > 0:
+                    cipher, key_bytes, key_block_bytes = self.get_cipher(p.symmetric_algorithm)
+                    if not cipher:
+                        continue
+                    cipher = cipher(p.s2k.make_key(passphrase, key_bytes))
+                    pad_amount = key_block_bytes - (len(p.encrypted_data) % key_block_bytes)
+                    data = cipher(b'\0' * key_block_bytes).decrypt(p.encrypted_data + (pad_amount*b'\0'))[:-pad_amount]
+
+                    decrypted = self.decrypt_packet(epacket, ord(data[0:1]), data[1:])
+                else:
+                    cipher, key_bytes, key_block_bytes = self.get_cipher(p.symmetric_algorithm)
+                    if not cipher:
+                        continue
+
+                    decrypted = self.decrypt_packet(epacket, p.symmetric_algorithm, p.s2k.make_key(passphrase, key_bytes))
+
+                if decrypted:
+                    return decrypted
+
+        return None # If we get here, we failed
+
+    @classmethod
+    def decrypt_packet(cls, epacket, symmetric_algorithm, key):
+        cipher, key_bytes, key_block_bytes = cls.get_cipher(symmetric_algorithm)
+        if not cipher:
+            return None
+        cipher = cipher(key)
+
+        pad_amount = key_block_bytes - (len(epacket.data) % key_block_bytes)
+        if isinstance(epacket, OpenPGP.IntegrityProtectedDataPacket):
+            data = cipher(b'\0' * key_block_bytes).decrypt(epacket.data + (pad_amount*b'\0'))[:-pad_amount]
+            prefix = data[0:key_block_bytes+2]
+            mdc = data[-22:][2:]
+            data = data[key_block_bytes+2:-22]
+
+            mkMDC = hashlib.sha1(prefix + data + b'\xd3\x14').digest()
+            if mdc != mkMDC:
+                return False
+
+            try:
+                return OpenPGP.Message.parse(data)
+            except:
+                return None
+        else:
+            # No MDC means decrypt with resync
+            edata = epacket.data[key_block_bytes+2:]
+            pad_amount = key_block_bytes - (len(edata) % key_block_bytes)
+            data = cipher(epacket.data[2:key_block_bytes+2]).decrypt(edata + (pad_amount*b'\0'))[:-pad_amount]
+            try:
+                return OpenPGP.Message.parse(data)
+            except:
+                return None
+
+        return None
+
     @classmethod
     def _parse_packet(cls, packet):
         if isinstance(packet, OpenPGP.Packet) or isinstance(packet, OpenPGP.Message) or isinstance(packet, Crypto.PublicKey.RSA._RSAobj) or isinstance(packet, Crypto.PublicKey.DSA._DSAobj):
@@ -207,6 +284,28 @@ class Wrapper:
             return OpenPGP.SecretKeyPacket(keydata=data, algorithm=1, version=3) # V3 for fingerprint with no timestamp
         else:
             return OpenPGP.Message.parse(packet)
+
+    @classmethod
+    def get_cipher(cls, algo):
+        def cipher(m, ks, bs):
+            return (lambda k: lambda iv:
+                    m.new(k, mode=Crypto.Cipher.blockalgo.MODE_CFB, IV=iv, segment_size=bs*8),
+                ks, bs)
+
+        if algo == 2:
+            return cipher(Crypto.Cipher.DES3, 24, 8)
+        elif algo == 3:
+            return cipher(Crypto.Cipher.CAST, 16, 8)
+        elif algo == 4:
+            return cipher(Crypto.Cipher.Blowfish, 16, 8)
+        elif algo == 7:
+            return cipher(Crypto.Cipher.AES, 16, 16)
+        elif algo == 8:
+            return cipher(Crypto.Cipher.AES, 24, 16)
+        elif algo == 9:
+            return cipher(Crypto.Cipher.AES, 32, 16)
+
+        return (None,None,None) # Not supported
 
     @classmethod
     def convert_key(cls, packet, private=False):
