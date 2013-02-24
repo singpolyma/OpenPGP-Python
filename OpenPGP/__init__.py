@@ -13,25 +13,98 @@ def bitlength(data):
     """ http://tools.ietf.org/html/rfc4880#section-12.2 """
     return (len(data) - 1) * 8 + int(floor(log(ord(data[0:1]), 2))) + 1
 
-def decode_s2k_count(c):
-    return int(16 + (c & 15)) << ((c >> 4) + 6)
+class S2K(object):
+    def __init__(self, salt=b'BADSALT', hash_algorithm=10, count=65536, type=3):
+        self.type = type
+        self.hash_algorithm = hash_algorithm
+        self.salt = salt
+        self.count = count
 
-def encode_s2k_count(iterations):
-    if iterations >= 65011712:
-        return 255
+    def to_bytes(self):
+        bs = pack('!B', self.type)
+        if self.type in [0,1,3]:
+            bs += pack('!B', self.hash_algorithm)
+        if self.type in [1,3]:
+            bs += self.salt
+        if self.type in [3]:
+            bs += pack('!B', self.encode_s2k_count(self.count))
+        return bs
 
-    count = iterations >> 6
-    c = 0
-    while count >= 32:
-        count = count >> 1
-        c += 1
+    def raw_hash(self, s, prefix=b''):
+        hasher = hashlib.new(SignaturePacket.hash_algorithms[self.hash_algorithm].lower())
+        hasher.update(prefix)
+        hasher.update(s)
+        return hasher.digest()
 
-    result = (c << 4) | (count - 16)
+    def iterate(self, s, prefix=b''):
+        hasher = hashlib.new(SignaturePacket.hash_algorithms[self.hash_algorithm].lower())
+        hasher.update(prefix)
+        hasher.update(s)
+        remaining = self.count - len(s)
+        while remaining > 0:
+            hasher.update(s[0:remaining])
+            remaining -= len(s)
+        return hasher.digest()
 
-    if decode_s2k_count(result) < iterations:
-        return result + 1
+    def sized_hash(self, hasher, s, size):
+        hsh = hasher(s)
+        prefix = b'\0'
+        while len(hsh) < size:
+            hsh += hasher(s, prefix)
+            prefix += b'\0'
 
-    return result
+        return hsh[0:size]
+
+    def make_key(self, passphrase, size):
+        if self.type == 0:
+            return self.sized_hash(self.raw_hash, passphrase, size)
+        elif self.type == 1:
+            return self.sized_hash(self.raw_hash, self.salt + passphrase, size)
+        elif self.type == 3:
+            return self.sized_hash(self.iterate, self.salt + passphrase, size)
+
+    @classmethod
+    def parse(cls, input):
+        s2k_type = ord(input[0:1])
+        if s2k_type == 0:
+            return (cls(b'UNSALTED', ord(input[1:2]), 0, s2k_type), 2)
+        elif s2k_type == 1:
+            return (cls(input[2:10], ord(input[1:2]), 0, s2k_type), 10)
+        elif s2k_type == 3:
+            return (cls(input[2:10], ord(input[1:2]), cls.decode_s2k_count(ord(input[10:11])), s2k_type), 11)
+
+    @classmethod
+    def decode_s2k_count(cls, c):
+        return int(16 + (c & 15)) << ((c >> 4) + 6)
+
+    @classmethod
+    def encode_s2k_count(cls, iterations):
+        if iterations >= 65011712:
+            return 255
+
+        count = iterations >> 6
+        c = 0
+        while count >= 32:
+            count = count >> 1
+            c += 1
+
+        result = (c << 4) | (count - 16)
+
+        if cls.decode_s2k_count(result) < iterations:
+            return result + 1
+
+        return result
+
+    def __repr__(self):
+        return "%s: %s" % (type(self), self.__dict__.__repr__())
+
+    def __eq__(self, other):
+        if type(other) is type(self):
+            return self.__dict__ == other.__dict__
+        return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 class Message(object):
     """ Represents an OpenPGP message (set of packets)
@@ -985,7 +1058,7 @@ class SecretKeyPacket(PublicKeyPacket):
             if(self.s2k_type == 1 or self.s2k_type == 3):
                 self.s2k_salt = self.read_bytes(8)
             if self.s2k_type == 3:
-                self.s2k_count = decode_s2k_count(ord(self.read_byte()))
+                self.s2k_count = S2K.decode_s2k_count(ord(self.read_byte()))
         elif self.s2k_useage > 0:
             self.symmetric_type = self.s2k_useage
         if self.s2k_useage > 0:
@@ -1021,7 +1094,7 @@ class SecretKeyPacket(PublicKeyPacket):
             if self.s2k_type == 1 or self.s2k_type == 3:
                 b += self.s2k_salt
             if self.s2k_type == 3:
-                b += pack('!B', encode_s2k_count(self.s2k_count))
+                b += pack('!B', S2K.encode_s2k_count(self.s2k_count))
         if self.s2k_useage > 0:
             b += self.encrypted_data
         else:
