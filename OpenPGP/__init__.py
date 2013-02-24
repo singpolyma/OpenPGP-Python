@@ -1066,17 +1066,12 @@ class SecretKeyPacket(PublicKeyPacket):
         super(SecretKeyPacket, self).read() # All the fields from PublicKey
         self.s2k_useage = ord(self.read_byte())
         if self.s2k_useage == 255 or self.s2k_useage == 254:
-            self.symmetric_type = ord(self.read_byte())
-            self.s2k_type = ord(self.read_byte())
-            self.s2k_hash_algorithm = ord(self.read_byte())
-            if(self.s2k_type == 1 or self.s2k_type == 3):
-                self.s2k_salt = self.read_bytes(8)
-            if self.s2k_type == 3:
-                self.s2k_count = S2K.decode_s2k_count(ord(self.read_byte()))
+            self.symmetric_algorithm = ord(self.read_byte())
+            self.s2k, s2k_bytes = S2K.parse(self.input)
+            self.input = self.input[s2k_bytes:]
         elif self.s2k_useage > 0:
-            self.symmetric_type = self.s2k_useage
+            self.symmetric_algorithm = self.s2k_useage
         if self.s2k_useage > 0:
-            # TODO: IV of the same length as cipher's block size
             self.encrypted_data = self.input # Rest of input is MPIs and checksum (encrypted)
         else:
             self.data = self.input # Rest of input is MPIs and checksum
@@ -1102,13 +1097,8 @@ class SecretKeyPacket(PublicKeyPacket):
         b = super(SecretKeyPacket, self).body() + pack('!B', self.s2k_useage)
         secret_material = b''
         if self.s2k_useage == 255 or self.s2k_useage == 254:
-            b += pack('!B', self.symmetric_type)
-            b += pack('!B', self.s2k_type)
-            b += pack('!B', self.s2k_hash_algorithm)
-            if self.s2k_type == 1 or self.s2k_type == 3:
-                b += self.s2k_salt
-            if self.s2k_type == 3:
-                b += pack('!B', S2K.encode_s2k_count(self.s2k_count))
+            b += pack('!B', self.symmetric_algorithm)
+            b += self.s2k.to_bytes()
         if self.s2k_useage > 0:
             b += self.encrypted_data
         else:
