@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from struct import unpack
 import Crypto.Random.random
 import Crypto.PublicKey.RSA
 import Crypto.PublicKey.DSA
@@ -18,6 +19,7 @@ import Crypto.Util.number
 import OpenPGP
 import hashlib, math
 import sys
+import copy
 
 class Wrapper:
     """ A wrapper for using the classes from OpenPGP.py with PyCrypto """
@@ -235,6 +237,37 @@ class Wrapper:
                     return decrypted
 
         return None # If we get here, we failed
+
+    def decrypt_secret_key(self, passphrase):
+        if hasattr(passphrase, 'encode'):
+            passphrase = passphrase.encode('utf-8')
+
+        packet = copy.copy(self._message or self._key) # Do not mutate original
+
+        cipher, key_bytes, key_block_bytes = self.get_cipher(packet.symmetric_algorithm)
+        cipher = cipher(packet.s2k.make_key(passphrase, key_bytes))
+        cipher = cipher(packet.encrypted_data[:key_block_bytes])
+        pad_amount = key_block_bytes - (len(packet.encrypted_data[key_block_bytes:]) % key_block_bytes)
+        material = cipher.decrypt(packet.encrypted_data[key_block_bytes:] + (pad_amount*b'\0'))[:-pad_amount]
+
+        if packet.s2k_useage == 254:
+            chk = material[-20:]
+            material = material[:-20]
+            if(chk != hashlib.sha1(material)):
+                return None
+        else:
+            chk = unpack('!H', material[-2:])[0]
+            material = material[:-2]
+            if chk != OpenPGP.checksum(material):
+                return None
+
+        packet.s2k_usage = 0
+        packet.symmetric_alorithm = 0
+        packet.encrypted_data = None
+        packet.input = material
+        packet.key_from_input()
+        packet.input = None
+        return packet
 
     @classmethod
     def decrypt_packet(cls, epacket, symmetric_algorithm, key):

@@ -103,6 +103,11 @@ class TestDecryption:
     def testDecryptSessionKey(self):
         self.oneSymmetric("hello", b"PGP\n", "symmetric-with-session-key.gpg")
 
+    def testDecryptSecretKey(self):
+        key = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/encryptedSecretKey.gpg', 'rb').read())
+        skey = OpenPGP.Crypto.Wrapper(key[0]).decrypt_secret_key("hello")
+        nose.tools.assert_equal(not (not skey), True)
+
 """
     def testDecryptAsymmetric(self):
         $m = OpenPGP_Message::parse(file_get_contents(dirname(__FILE__) . '/data/hello.gpg'))
@@ -113,11 +118,6 @@ class TestDecryption:
         foreach($m2 as $p) {
             if($p instanceof OpenPGP_LiteralDataPacket) {
                 self.assertEquals($p->data, b"hello\n")
-
-    def testDecryptSecretKey(self):
-        $key = OpenPGP_Message::parse(file_get_contents(dirname(__FILE__) . '/data/encryptedSecretKey.gpg'))
-        $skey = OpenPGP_Crypt_AES_TripleDES::decryptSecretKey("hello", $key[0])
-        self.assertSame(!!$skey, true)
 
 class TestEncryption:
     def testEncryptSymmetric(self):

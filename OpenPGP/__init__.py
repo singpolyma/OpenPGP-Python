@@ -13,6 +13,15 @@ def bitlength(data):
     """ http://tools.ietf.org/html/rfc4880#section-12.2 """
     return (len(data) - 1) * 8 + int(floor(log(ord(data[0:1]), 2))) + 1
 
+def checksum(data):
+    mkChk = 0
+    for i in range(0, len(data)):
+        mkChk = (mkChk + ord(data[i:i+1])) % 65536
+    return mkChk
+
+class OpenPGPException(Exception):
+    pass # Everything inherited
+
 class S2K(object):
     def __init__(self, salt=b'BADSALT', hash_algorithm=10, count=65536, type=3):
         self.type = type
@@ -1074,24 +1083,15 @@ class SecretKeyPacket(PublicKeyPacket):
         if self.s2k_useage > 0:
             self.encrypted_data = self.input # Rest of input is MPIs and checksum (encrypted)
         else:
-            self.data = self.input # Rest of input is MPIs and checksum
-            self.key_from_data()
+            material = self.input[:-2]
+            self.key_from_input()
+            chk = self.read_unpacked(2, '!H')
+            if chk != checksum(material):
+                raise OpenPGPException("Checksum verification failed when parsing SecretKeyPacket")
 
-    def key_from_data(self):
-        if not self.data:
-            return None # Not decrypted yet
-        self.input = self.data
-
+    def key_from_input(self):
         for field in self.secret_key_fields[self.key_algorithm]:
             self.key[field] = self.read_mpi()
-
-        # TODO: Validate checksum?
-        if self.s2k_useage == 254: # 20 octet sha1 hash
-            self.private_hash = self.read_bytes(20)
-        else: # Two-octet checksum
-            self.private_hash = self.read_bytes(2)
-
-        self.input = None
 
     def body(self):
         b = super(SecretKeyPacket, self).body() + pack('!B', self.s2k_useage)
@@ -1178,7 +1178,7 @@ class EncryptedDataPacket(Packet):
     """ OpenPGP Symmetrically Encrypted Data packet (tag 9).
         http://tools.ietf.org/html/rfc4880#section-5.7
     """
-    pass # TODO
+    pass # Everything inherited
 
 class MarkerPacket(Packet):
     """ OpenPGP Marker packet (tag 10).
