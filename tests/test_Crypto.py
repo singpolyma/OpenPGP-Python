@@ -108,17 +108,17 @@ class TestDecryption:
         skey = OpenPGP.Crypto.Wrapper(key[0]).decrypt_secret_key("hello")
         nose.tools.assert_equal(not (not skey), True)
 
-"""
     def testDecryptAsymmetric(self):
-        $m = OpenPGP_Message::parse(file_get_contents(dirname(__FILE__) . '/data/hello.gpg'))
-        $key = OpenPGP_Message::parse(file_get_contents(dirname(__FILE__) . '/data/helloKey.gpg'))
-        $decryptor = new OpenPGP_Crypt_RSA($key)
-        $m2 = $decryptor->decrypt($m)
-        while($m2[0] instanceof OpenPGP_CompressedDataPacket) $m2 = $m2[0]->data
-        foreach($m2 as $p) {
-            if($p instanceof OpenPGP_LiteralDataPacket) {
-                self.assertEquals($p->data, b"hello\n")
+        m = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/hello.gpg', 'rb').read())
+        key = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/helloKey.gpg', 'rb').read())
+        m2 = OpenPGP.Crypto.Wrapper(key).decrypt(m)
+        while(isinstance(m2[0], OpenPGP.CompressedDataPacket)):
+            m2 = m2[0].data
+        for p in m2:
+            if(isinstance(p,OpenPGP.LiteralDataPacket)):
+                nose.tools.assert_equal(p.data, b"hello\n")
 
+"""
 class TestEncryption:
     def testEncryptSymmetric(self):
         $data = new OpenPGP_LiteralDataPacket('This is text.', array('format' => 'u', 'filename' => 'stuff.txt'))

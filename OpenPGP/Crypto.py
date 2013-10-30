@@ -1,8 +1,10 @@
 from __future__ import absolute_import
 from struct import unpack
+import Crypto.Random
 import Crypto.Random.random
 import Crypto.PublicKey.RSA
 import Crypto.PublicKey.DSA
+import Crypto.Cipher.PKCS1_v1_5
 import Crypto.Cipher.DES3
 import Crypto.Cipher.AES
 import Crypto.Cipher.Blowfish
@@ -208,6 +210,61 @@ class Wrapper:
             }})
 
         return packet
+
+    def decrypt(self, packet):
+        if isinstance(packet, list):
+            packet = OpenPGP.Message(packet)
+        elif not isinstance(packet, OpenPGP.Message):
+            packet = OpenPGP.Message.parse(packet)
+
+        if isinstance(packet, OpenPGP.SecretKeyPacket) or isinstance(packet, Crypto.PublicKey.RSA._RSAobj) or (hasattr(packet, '__getitem__') and isinstance(packet[0], OpenPGP.SecretKeyPacket)):
+            keys = packet
+        else:
+            keys = self._key
+            self._message = packet
+
+        if not keys or not self._message:
+            return None # Missing some data
+
+        if not isinstance(keys, Crypto.PublicKey.RSA._RSAobj):
+            keys = self.__class__(keys)
+
+        for p in self._message:
+            if isinstance(p, OpenPGP.AsymmetricSessionKeyPacket):
+                if isinstance(keys, Crypto.PublicKey.RSA._RSAobj):
+                    sk = self.try_decrypt_session(keys, p.encrypted_data[2:])
+                elif len(p.keyid.replace('0','')) < 1:
+                    for k in keys.key:
+                        sk = self.try_decrypt_session(self.convert_private_key(k), p.encyrpted_data[2:]);
+                        if sk:
+                          break
+                else:
+                    key = keys.private_key(p.keyid)
+                    sk = self.try_decrypt_session(key, p.encrypted_data[2:])
+
+                if not sk:
+                    continue
+
+                r = self.decrypt_packet(self.encrypted_data(), sk[0], sk[1])
+                if r:
+                    return r
+
+        return None # Failed
+
+    @classmethod
+    def try_decrypt_session(cls, key, edata):
+        pkcs15 = Crypto.Cipher.PKCS1_v1_5.new(key)
+        data = pkcs15.decrypt(edata, Crypto.Random.new().read(len(edata)))
+        sk = data[1:len(data)-2]
+        chk = unpack('!H', data[-2:])[0]
+
+        sk_chk = 0
+        for i in range(0, len(sk)):
+          sk_chk = (sk_chk + ord(sk[i:i+1])) % 65536
+
+        if sk_chk != chk:
+            return None
+        return (ord(data[0:1]), sk)
 
     def decrypt_symmetric(self, passphrase):
         epacket = self.encrypted_data()
