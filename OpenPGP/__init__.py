@@ -393,7 +393,34 @@ class AsymmetricSessionKeyPacket(Packet):
     """ OpenPGP Public-Key Encrypted Session Key packet (tag 1).
         http://tools.ietf.org/html/rfc4880#section-5.1
     """
-    pass # TODO
+    def __init__(self, key_algorithm='', keyid='', encrypted_data='', version=3):
+        self.version = version
+        self.keyid = keyid[-16:]
+        self.key_algorithm = key_algorithm
+        self.encrypted_data = encrypted_data
+
+    def read(self):
+        self.version = ord(self.read_byte())
+        if self.version == 3:
+            rawkeyid = self.read_bytes(8)
+            self.keyid = '';
+            for i in range(0, len(rawkeyid)): # Store KeyID in Hex
+                self.keyid += '%02X' % ord(rawkeyid[i:i+1])
+
+            self.key_algorithm = ord(self.read_byte())
+            self.encrypted_data = self.input
+        else:
+            raise OpenPGPException("Unsupported AsymmetricSessionKeyPacket version: " + self.version)
+
+    def body(self):
+        b = chr(self.version)
+
+        for i in range(0, len(self.keyid), 2):
+            b += pack('!B', int(self.keyid[i] + self.keyid[i+1], 16))
+
+        b += chr(self.key_algorithm)
+        b += self.encrypted_data
+        return b
 
 class SignaturePacket(Packet):
     """ OpenPGP Signature packet (tag 2).
