@@ -280,7 +280,7 @@ class Wrapper:
 
         encrypted = [OpenPGP.IntegrityProtectedDataPacket(self._block_pad_unpad(key_block_bytes, to_encrypt, lambda x: session_cipher.encrypt(x)))]
 
-        if not isinstance(passphrases_and_keys, collections.Iterable) or isinstance(passphrases_and_keys, basestring):
+        if not isinstance(passphrases_and_keys, collections.Iterable) or hasattr(passphrases_and_keys, 'encode'):
             passphrases_and_keys = [passphrases_and_keys]
 
         for psswd in passphrases_and_keys:
@@ -289,13 +289,14 @@ class Wrapper:
                   raise Exception("Only RSA keys are supported.")
               rsa = self.__class__(psswd).public_key()
               pkcs1 = Crypto.Cipher.PKCS1_v1_5.new(rsa)
-              esk = pkcs1.encrypt(chr(symmetric_algorithm) + key + pack('!H', OpenPGP.checksum(key)))
+              esk = pkcs1.encrypt(pack('!B', symmetric_algorithm) + key + pack('!H', OpenPGP.checksum(key)))
               esk = pack('!H', OpenPGP.bitlength(esk)) + esk
               encrypted = [OpenPGP.AsymmetricSessionKeyPacket(psswd.key_algorithm, psswd.fingerprint(), esk)] + encrypted
-          elif isinstance(psswd, basestring):
+          elif hasattr(psswd, 'encode'):
+              psswd = psswd.encode('utf-8')
               s2k = OpenPGP.S2K(Crypto.Random.new().read(10))
               packet_cipher = cipher(s2k.make_key(psswd, key_bytes))(None)
-              esk = self._block_pad_unpad(key_block_bytes, chr(symmetric_algorithm) + key, lambda x: packet_cipher.encrypt(x))
+              esk = self._block_pad_unpad(key_block_bytes, pack('!B', symmetric_algorithm) + key, lambda x: packet_cipher.encrypt(x))
               encrypted = [OpenPGP.SymmetricSessionKeyPacket(s2k, esk, symmetric_algorithm)] + encrypted
 
         return OpenPGP.Message(encrypted)

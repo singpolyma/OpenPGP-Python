@@ -413,12 +413,12 @@ class AsymmetricSessionKeyPacket(Packet):
             raise OpenPGPException("Unsupported AsymmetricSessionKeyPacket version: " + self.version)
 
     def body(self):
-        b = chr(self.version)
+        b = pack('!B', self.version)
 
         for i in range(0, len(self.keyid), 2):
             b += pack('!B', int(self.keyid[i] + self.keyid[i+1], 16))
 
-        b += chr(self.key_algorithm)
+        b += pack('!B', self.key_algorithm)
         b += self.encrypted_data
         return b
 
