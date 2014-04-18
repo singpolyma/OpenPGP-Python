@@ -279,8 +279,7 @@ class Wrapper:
                     if not cipher:
                         continue
                     cipher = cipher(p.s2k.make_key(passphrase, key_bytes))
-                    pad_amount = key_block_bytes - (len(p.encrypted_data) % key_block_bytes)
-                    data = cipher(b'\0' * key_block_bytes).decrypt(p.encrypted_data + (pad_amount*b'\0'))[:-pad_amount]
+                    data = self._block_pad_unpad(key_block_bytes, p.encrypted_data, lambda x: cipher(None).decrypt(x))
 
                     decrypted = self.decrypt_packet(epacket, ord(data[0:1]), data[1:])
                 else:
@@ -304,8 +303,7 @@ class Wrapper:
         cipher, key_bytes, key_block_bytes = self.get_cipher(packet.symmetric_algorithm)
         cipher = cipher(packet.s2k.make_key(passphrase, key_bytes))
         cipher = cipher(packet.encrypted_data[:key_block_bytes])
-        pad_amount = key_block_bytes - (len(packet.encrypted_data[key_block_bytes:]) % key_block_bytes)
-        material = cipher.decrypt(packet.encrypted_data[key_block_bytes:] + (pad_amount*b'\0'))[:-pad_amount]
+        material = self._block_pad_unpad(key_block_bytes, packet.encrypted_data[key_block_bytes:], lambda x: cipher.decrypt(x))
 
         if packet.s2k_useage == 254:
             chk = material[-20:]
@@ -333,9 +331,8 @@ class Wrapper:
             return None
         cipher = cipher(key)
 
-        pad_amount = key_block_bytes - (len(epacket.data) % key_block_bytes)
         if isinstance(epacket, OpenPGP.IntegrityProtectedDataPacket):
-            data = cipher(b'\0' * key_block_bytes).decrypt(epacket.data + (pad_amount*b'\0'))[:-pad_amount]
+            data = cls._block_pad_unpad(key_block_bytes, epacket.data, lambda x: cipher(None).decrypt(x))
             prefix = data[0:key_block_bytes+2]
             mdc = data[-22:][2:]
             data = data[key_block_bytes+2:-22]
@@ -351,8 +348,7 @@ class Wrapper:
         else:
             # No MDC means decrypt with resync
             edata = epacket.data[key_block_bytes+2:]
-            pad_amount = key_block_bytes - (len(edata) % key_block_bytes)
-            data = cipher(epacket.data[2:key_block_bytes+2]).decrypt(edata + (pad_amount*b'\0'))[:-pad_amount]
+            data = cls._block_pad_unpad(key_block_bytes, edata, lambda x: cipher(epacket.data[2:key_block_bytes+2]).decrypt(x))
             try:
                 return OpenPGP.Message.parse(data)
             except:
@@ -379,7 +375,9 @@ class Wrapper:
     def get_cipher(cls, algo):
         def cipher(m, ks, bs):
             return (lambda k: lambda iv:
-                    m.new(k, mode=Crypto.Cipher.blockalgo.MODE_CFB, IV=iv, segment_size=bs*8),
+                    m.new(k, mode=Crypto.Cipher.blockalgo.MODE_CFB,
+                        IV=iv or b'\0'*bs,
+                        segment_size=bs*8),
                 ks, bs)
 
         if algo == 2:
@@ -432,3 +430,8 @@ class Wrapper:
     @classmethod
     def convert_private_key(cls, packet):
         return cls.convert_key(packet, True)
+
+    @classmethod
+    def _block_pad_unpad(cls, siz, bs, go):
+        pad_amount = siz - (len(bs) % siz)
+        return go(bs + b'\0'*pad_amount)[:-pad_amount]
