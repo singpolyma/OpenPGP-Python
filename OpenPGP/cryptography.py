@@ -4,16 +4,10 @@ import Crypto.Random
 import Crypto.Random.random
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding#, dsa
 from cryptography.hazmat.primitives.interfaces import RSAPrivateKey, RSAPublicKey, DSAPublicKey
 from cryptography.exceptions import InvalidSignature
-import Crypto.PublicKey.DSA
-#import Crypto.Cipher.PKCS1_v1_5
-import Crypto.Cipher.DES3
-import Crypto.Cipher.AES
-import Crypto.Cipher.Blowfish
-import Crypto.Cipher.CAST
-#import Crypto.Signature.PKCS1_v1_5
 import Crypto.Hash.MD5
 import Crypto.Hash.RIPEMD
 import Crypto.Hash.SHA
@@ -21,7 +15,6 @@ import Crypto.Hash.SHA224
 import Crypto.Hash.SHA256
 import Crypto.Hash.SHA384
 import Crypto.Hash.SHA512
-import Crypto.Util.number
 import OpenPGP
 import hashlib, math
 import sys
@@ -288,7 +281,10 @@ class Wrapper:
                         continue
                     cipher = cipher(p.s2k.make_key(passphrase, key_bytes))
                     pad_amount = key_block_bytes - (len(p.encrypted_data) % key_block_bytes)
-                    data = cipher(b'\0' * key_block_bytes).decrypt(p.encrypted_data + (pad_amount*b'\0'))[:-pad_amount]
+                    withiv = cipher(b'\0' * key_block_bytes).decryptor()
+                    data = withiv.update(p.encrypted_data + (pad_amount*b'\0'))
+                    data += withiv.finalize()
+                    data = data[:-pad_amount]
 
                     decrypted = self.decrypt_packet(epacket, ord(data[0:1]), data[1:])
                 else:
@@ -311,9 +307,11 @@ class Wrapper:
 
         cipher, key_bytes, key_block_bytes = self.get_cipher(packet.symmetric_algorithm)
         cipher = cipher(packet.s2k.make_key(passphrase, key_bytes))
-        cipher = cipher(packet.encrypted_data[:key_block_bytes])
+        cipher = cipher(packet.encrypted_data[:key_block_bytes]).decryptor()
         pad_amount = key_block_bytes - (len(packet.encrypted_data[key_block_bytes:]) % key_block_bytes)
-        material = cipher.decrypt(packet.encrypted_data[key_block_bytes:] + (pad_amount*b'\0'))[:-pad_amount]
+        material = cipher.update(packet.encrypted_data[key_block_bytes:] + (pad_amount*b'\0'))
+        material += cipher.finalize()
+        material = material[:-pad_amount]
 
         if packet.s2k_useage == 254:
             chk = material[-20:]
@@ -343,7 +341,10 @@ class Wrapper:
 
         pad_amount = key_block_bytes - (len(epacket.data) % key_block_bytes)
         if isinstance(epacket, OpenPGP.IntegrityProtectedDataPacket):
-            data = cipher(b'\0' * key_block_bytes).decrypt(epacket.data + (pad_amount*b'\0'))[:-pad_amount]
+            withiv = cipher(b'\0' * key_block_bytes).decryptor()
+            data = withiv.update(epacket.data + (pad_amount*b'\0'))
+            data += withiv.finalize()
+            data = data[:-pad_amount]
             prefix = data[0:key_block_bytes+2]
             mdc = data[-22:][2:]
             data = data[key_block_bytes+2:-22]
@@ -360,7 +361,10 @@ class Wrapper:
             # No MDC means decrypt with resync
             edata = epacket.data[key_block_bytes+2:]
             pad_amount = key_block_bytes - (len(edata) % key_block_bytes)
-            data = cipher(epacket.data[2:key_block_bytes+2]).decrypt(edata + (pad_amount*b'\0'))[:-pad_amount]
+            withiv = cipher(epacket.data[2:key_block_bytes+2]).decryptor()
+            data = withiv.update(edata + (pad_amount*b'\0'))
+            data += withiv.finalize()
+            data = data[:-pad_amount]
             try:
                 return OpenPGP.Message.parse(data)
             except:
@@ -387,21 +391,21 @@ class Wrapper:
     def get_cipher(cls, algo):
         def cipher(m, ks, bs):
             return (lambda k: lambda iv:
-                    m.new(k, mode=Crypto.Cipher.blockalgo.MODE_CFB, IV=iv, segment_size=bs*8),
+                    Cipher(m(k), modes.CFB(iv), default_backend()),
                 ks, bs)
 
         if algo == 2:
-            return cipher(Crypto.Cipher.DES3, 24, 8)
+            return cipher(algorithms.TripleDES, 24, 8)
         elif algo == 3:
-            return cipher(Crypto.Cipher.CAST, 16, 8)
+            return cipher(algorithms.CAST5, 16, 8)
         elif algo == 4:
-            return cipher(Crypto.Cipher.Blowfish, 16, 8)
+            return cipher(algorithms.Blowfish, 16, 8)
         elif algo == 7:
-            return cipher(Crypto.Cipher.AES, 16, 16)
+            return cipher(algorithms.AES, 16, 16)
         elif algo == 8:
-            return cipher(Crypto.Cipher.AES, 24, 16)
+            return cipher(algorithms.AES, 24, 16)
         elif algo == 9:
-            return cipher(Crypto.Cipher.AES, 32, 16)
+            return cipher(algorithms.AES, 32, 16)
 
         return (None,None,None) # Not supported
 
@@ -428,10 +432,9 @@ class Wrapper:
           public = (cls._bytes_to_long(packet.key['e']), cls._bytes_to_long(packet.key['n']))
           if private:
               d = cls._bytes_to_long(packet.key['d'])
-              if 'p' in packet.key: # Has optional parts
-                  private = (cls._bytes_to_long(packet.key['p']), cls._bytes_to_long(packet.key['q']), d, 0, 0, cls._bytes_to_long(packet.key['u']))
-              else:
-                  private = (0,0,0)
+              p = cls._bytes_to_long(packet.key['q'])
+              q = cls._bytes_to_long(packet.key['p'])
+              private = (p, q, d, d % (p - 1), d % (q - 1), cls._bytes_to_long(packet.key['u']))
               return rsa.RSAPrivateKey(*(private + public))
           else:
               return rsa.RSAPublicKey(*public)
