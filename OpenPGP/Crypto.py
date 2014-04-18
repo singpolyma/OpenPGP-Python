@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from struct import unpack
+from struct import pack, unpack
 import Crypto.Random
 import Crypto.Random.random
 import Crypto.PublicKey.RSA
@@ -19,9 +19,7 @@ import Crypto.Hash.SHA384
 import Crypto.Hash.SHA512
 import Crypto.Util.number
 import OpenPGP
-import hashlib, math
-import sys
-import copy
+import hashlib, math, sys, copy, collections
 
 class Wrapper:
     """ A wrapper for using the classes from OpenPGP.py with PyCrypto """
@@ -265,6 +263,42 @@ class Wrapper:
         if sk_chk != chk:
             return None
         return (ord(data[0:1]), sk)
+
+    def encrypt(self, passphrases_and_keys, symmetric_algorithm=9):
+        cipher, key_bytes, key_block_bytes = self.get_cipher(symmetric_algorithm)
+        if not cipher:
+            raise Exception("Unsupported cipher")
+        prefix = Crypto.Random.new().read(key_block_bytes)
+        prefix += prefix[-2:]
+
+        key = Crypto.Random.new().read(key_bytes)
+        session_cipher = cipher(key)(None)
+
+        to_encrypt = prefix + self._message.to_bytes()
+        mdc = OpenPGP.ModificationDetectionCodePacket(Crypto.Hash.SHA.new(to_encrypt + b'\xD3\x14').digest())
+        to_encrypt += mdc.to_bytes()
+
+        encrypted = [OpenPGP.IntegrityProtectedDataPacket(self._block_pad_unpad(key_block_bytes, to_encrypt, lambda x: session_cipher.encrypt(x)))]
+
+        if not isinstance(passphrases_and_keys, collections.Iterable) or isinstance(passphrases_and_keys, basestring):
+            passphrases_and_keys = [passphrases_and_keys]
+
+        for psswd in passphrases_and_keys:
+          if isinstance(psswd, OpenPGP.PublicKeyPacket):
+              if not psswd.key_algorithm in [1,2,3]:
+                  raise Exception("Only RSA keys are supported.")
+              rsa = self.__class__(psswd).public_key()
+              pkcs1 = Crypto.Cipher.PKCS1_v1_5.new(rsa)
+              esk = pkcs1.encrypt(chr(symmetric_algorithm) + key + pack('!H', OpenPGP.checksum(key)))
+              esk = pack('!H', OpenPGP.bitlength(esk)) + esk
+              encrypted = [OpenPGP.AsymmetricSessionKeyPacket(psswd.key_algorithm, psswd.fingerprint(), esk)] + encrypted
+          elif isinstance(psswd, basestring):
+              s2k = OpenPGP.S2K(Crypto.Random.new().read(10))
+              packet_cipher = cipher(s2k.make_key(psswd, key_bytes))(None)
+              esk = self._block_pad_unpad(key_block_bytes, chr(symmetric_algorithm) + key, lambda x: packet_cipher.encrypt(x))
+              encrypted = [OpenPGP.SymmetricSessionKeyPacket(s2k, esk, symmetric_algorithm)] + encrypted
+
+        return OpenPGP.Message(encrypted)
 
     def decrypt_symmetric(self, passphrase):
         epacket = self.encrypted_data()
