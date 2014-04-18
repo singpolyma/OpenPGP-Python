@@ -1328,7 +1328,23 @@ class ModificationDetectionCodePacket(Packet):
     """ OpenPGP Modification Detection Code packet (tag 19).
         http://tools.ietf.org/html/rfc4880#section-5.14
     """
-    pass # TODO
+    def __init__(self, sha1=''):
+        super(ModificationDetectionCodePacket, self).__init__()
+        self.data = sha1
+
+    def read(self):
+        self.data = self.input
+        if(len(self.input) != 20):
+            raise Exception("Bad ModificationDetectionCodePacket")
+
+    def header_and_body(self):
+        body = self.body() # Get body first, we will need it's length
+        if(len(body) != 20):
+            raise Exception("Bad ModificationDetectionCodePacket")
+        return {'header': b'\xD3\x14', 'body': body }
+
+    def body(self):
+        return self.data
 
 class ExperimentalPacket(Packet):
     """ OpenPGP Private or Experimental packet (tags 60..63).
