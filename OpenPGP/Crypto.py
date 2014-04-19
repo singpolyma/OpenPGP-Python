@@ -354,7 +354,8 @@ class Wrapper:
         packet.s2k_usage = 0
         packet.symmetric_alorithm = 0
         packet.encrypted_data = None
-        packet.input = material
+        packet.input = OpenPGP.PushbackGenerator(OpenPGP._gen_one(material))
+        packet.length = len(material)
         packet.key_from_input()
         packet.input = None
         return packet
