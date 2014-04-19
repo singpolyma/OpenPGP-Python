@@ -8,6 +8,7 @@ import zlib, bz2
 import hashlib
 import re
 import sys
+import itertools
 
 def bitlength(data):
     """ http://tools.ietf.org/html/rfc4880#section-12.2 """
@@ -115,6 +116,22 @@ class S2K(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
+class PushbackGenerator(object):
+    def __init__(self, g):
+        self._g = g
+        self._pushback = []
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        if len(self._pushback):
+            return self._pushback.pop(0)
+        return self._g.next()
+
+    def push(self, i):
+        self._pushback.insert(0, i)
+
 class Message(object):
     """ Represents an OpenPGP message (set of packets)
         http://tools.ietf.org/html/rfc4880#section-4.1
@@ -126,22 +143,21 @@ class Message(object):
         """ http://tools.ietf.org/html/rfc4880#section-4.1
             http://tools.ietf.org/html/rfc4880#section-4.2
         """
-        # TODO: support input_data being a file or input stream
-        packets = []
-        length = len(input_data)
-        while length > 0:
-            packet, bytes_used = Packet.parse(input_data)
-            if packet:
-                packets.append(packet)
-            if bytes_used and bytes_used > 0:
-                input_data = input_data[bytes_used:]
-            else: # Parsing is stuck
-                break
-            length -= bytes_used
-        return Message(packets)
+        def gen_one(i):
+            yield i
+
+        m = Message([]) # Nothing parsed yet
+        if hasattr(input_data, 'next'):
+            m._input = PushbackGenerator(input_data)
+        else:
+            m._input = PushbackGenerator(gen_one(input_data))
+
+        return m
 
     def __init__(self, packets=[]):
-        self._packets = packets
+        self._packets_start = packets
+        self._packets_end = []
+        self._input = None
 
     def to_bytes(self):
         b = b''
@@ -242,21 +258,56 @@ class Message(object):
 
         return verifier(raw + sig.trailer, sig)
 
+    def force(self):
+        packets = []
+        for p in self:
+            packets.append(p)
+        return packets
+
     def __iter__(self):
-        return iter(self._packets)
+        # Already parsed packets
+        for p in self._packets_start:
+            yield p
+
+        if self._input:
+            g = None
+            for chunk in self._input:
+                if not g:
+                    g = Packet.parse()
+                    g.next()
+                packet, bytes_used = g.send(chunk)
+                if bytes_used and bytes_used > 0:
+                    if len(chunk[bytes_used:]) > 0:
+                        self._input.push(chunk[bytes_used:])
+                else:
+                   raise OpenPGPException("Parsing is stuck")
+                if packet:
+                    self._packets_start.append(packet)
+                    g.close()
+                    g = None # Next packet
+                    yield packet
+        self._input = None # Parsing done
+
+        # Appended packets
+        for p in self._packets_end:
+            yield p
 
     def __getitem__(self, item):
-        return self._packets[item]
+        i = 0
+        for p in self:
+            if i == item:
+                return p
+            i += 1
 
     def append(self, item):
-        self._packets.append(item)
+        self._packets_end.append(item)
 
     def __repr__(self):
         return "%s: %s" % (type(self), self.__dict__.__repr__())
 
     def __eq__(self, other):
         if type(other) is type(self):
-            return self.__dict__ == other.__dict__
+            return self.force() == other.force()
         return False
 
     def __ne__(self, other):
@@ -269,7 +320,9 @@ class Packet(object):
     """
 
     @classmethod
-    def parse(cls, input_data):
+    def parse(cls, input_data=None):
+        if not input_data:
+            input_data = yield
         packet = None
         if len(input_data) > 0:
             if ord(input_data[0:1]) & 64:
@@ -290,7 +343,7 @@ class Packet(object):
               packet.read()
               packet.input = None
               packet.length = None
-        return (packet, head_length + data_length)
+        yield (packet, head_length + data_length)
 
     @classmethod
     def parse_new_format(cls, input_data):

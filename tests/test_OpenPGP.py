@@ -298,3 +298,13 @@ class TestFingerprint:
 
     def test000035006public_key(self):
         self.one_fingerprint("000035-006.public_key", "CB7933459F59C70DF1C3FBEEDEDC3ECF689AF56D")
+
+class TestStreaming:
+    def test_partial_results(self):
+        m = OpenPGP.Message.parse(OpenPGP.Message([OpenPGP.UserIDPacket('My name <e@example.com>'), OpenPGP.UserIDPacket('Your name <y@example.com>')]).to_bytes())
+        m[0] # Just the first one
+        nose.tools.assert_equal(len(m.force()), 2)
+
+    def test_file_stream(self):
+        m = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/pubring.gpg', 'rb'))
+        nose.tools.assert_equal(len(m.force()), 1944)
