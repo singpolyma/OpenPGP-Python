@@ -52,28 +52,28 @@ class TestKeyVerification:
         verify = OpenPGP.cryptography.Wrapper(m)
         nose.tools.assert_equal(verify.verify(m), m.signatures())
 
-    #def testSigningKeysRSA(self):
-    #    k = Crypto.PublicKey.RSA.generate(1024)
+    def testSigningKeysRSA(self):
+        k = Crypto.PublicKey.RSA.generate(1024)
 
-    #    nkey = OpenPGP.SecretKeyPacket((
-    #        Crypto.Util.number.long_to_bytes(k.n),
-    #        Crypto.Util.number.long_to_bytes(k.e),
-    #        Crypto.Util.number.long_to_bytes(k.d),
-    #        Crypto.Util.number.long_to_bytes(k.p),
-    #        Crypto.Util.number.long_to_bytes(k.q),
-    #        Crypto.Util.number.long_to_bytes(k.u)
-    #    ))
+        nkey = OpenPGP.SecretKeyPacket((
+            Crypto.Util.number.long_to_bytes(k.n),
+            Crypto.Util.number.long_to_bytes(k.e),
+            Crypto.Util.number.long_to_bytes(k.d),
+            Crypto.Util.number.long_to_bytes(k.p),
+            Crypto.Util.number.long_to_bytes(k.q),
+            Crypto.Util.number.long_to_bytes(k.u)
+        ))
 
-    #    uid = OpenPGP.UserIDPacket('Test <test@example.com>')
+        uid = OpenPGP.UserIDPacket('Test <test@example.com>')
 
-    #    wkey = OpenPGP.cryptography.Wrapper(nkey)
-    #    m = wkey.sign_key_userid([nkey, uid]).to_bytes()
-    #    reparsedM = OpenPGP.Message.parse(m)
+        wkey = OpenPGP.cryptography.Wrapper(nkey)
+        m = wkey.sign_key_userid([nkey, uid]).to_bytes()
+        reparsedM = OpenPGP.Message.parse(m)
 
-    #    nose.tools.assert_equal(wkey.verify(reparsedM), reparsedM.signatures())
+        nose.tools.assert_equal(wkey.verify(reparsedM), reparsedM.signatures())
 
-    #def testHelloKey(self):
-    #    self.oneKeyRSA("helloKey.gpg")
+    def testHelloKey(self):
+        self.oneKeyRSA("helloKey.gpg")
 
 class TestDecryption:
     def oneSymmetric(self, pss, cnt, path):

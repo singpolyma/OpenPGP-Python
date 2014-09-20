@@ -197,14 +197,19 @@ class Wrapper:
             return list(key.sign(h.new(m).digest()[0:int(Crypto.Util.number.size(key.q) / 8)],
                 Crypto.Random.random.StrongRandom().randint(1,key.q-1)))
 
+        def doRSA(h, m):
+            ctx = key.signer(padding.PKCS1v15(), h())
+            ctx.update(m)
+            return [ctx.finalize()]
+
         sig.sign_data({'RSA': {
-                'MD5':       lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.MD5.new(m))],
-                'RIPEMD160': lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.RIPEMD.new(m))],
-                'SHA1':      lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA.new(m))],
-                'SHA224':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA224.new(m))],
-                'SHA256':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA256.new(m))],
-                'SHA384':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA384.new(m))],
-                'SHA512':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA512.new(m))],
+                'MD5':       lambda m: doRSA(hashes.MD5, m),
+                'RIPEMD160': lambda m: doRSA(hashes.RIPEMD160, m),
+                'SHA1':      lambda m: doRSA(hashes.SHA1, m),
+                'SHA224':    lambda m: doRSA(hashes.SHA224, m),
+                'SHA256':    lambda m: doRSA(hashes.SHA256, m),
+                'SHA384':    lambda m: doRSA(hashes.SHA384, m),
+                'SHA512':    lambda m: doRSA(hashes.SHA512, m)
             }, 'DSA': {
                 'MD5':       lambda m: doDSA(Crypto.Hash.MD5, m),
                 'RIPEMD160': lambda m: doDSA(Crypto.Hash.RIPEMD, m),
