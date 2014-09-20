@@ -439,7 +439,7 @@ class Wrapper:
                     cls._bytes_to_long(packet.key['y']),
                     params)
           if private:
-              return dsa.DSAPrivateNumbers(packet.key['x'], public).private_key(default_backend())
+              return dsa.DSAPrivateNumbers(cls._bytes_to_long(packet.key['x']), public).private_key(default_backend())
           else:
               return public.public_key(default_backend())
         else: # RSA
