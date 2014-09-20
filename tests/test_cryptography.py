@@ -24,13 +24,13 @@ class TestMessageVerification:
     def testCompressedSigBzip2(self):
         self.oneMessage('pubring.gpg', 'compressedsig-bzip2.gpg')
 
-    #def testSigningMessagesRSA(self):
-    #    wkey = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/helloKey.gpg', 'rb').read())
-    #    data = OpenPGP.LiteralDataPacket('This is text.', 'u', 'stuff.txt')
-    #    sign = OpenPGP.cryptography.Wrapper(wkey)
-    #    m = sign.sign(data).to_bytes()
-    #    reparsedM = OpenPGP.Message.parse(m)
-    #    nose.tools.assert_equal(sign.verify(reparsedM), reparsedM.signatures())
+    def testSigningMessagesRSA(self):
+        wkey = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/helloKey.gpg', 'rb').read())
+        data = OpenPGP.LiteralDataPacket('This is text.', 'u', 'stuff.txt')
+        sign = OpenPGP.cryptography.Wrapper(wkey)
+        m = sign.sign(data).to_bytes()
+        reparsedM = OpenPGP.Message.parse(m)
+        nose.tools.assert_equal(sign.verify(reparsedM), reparsedM.signatures())
 
     #def testSigningMessagesDSA(self):
     #    wkey = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/secring.gpg', 'rb').read())
@@ -72,8 +72,8 @@ class TestKeyVerification:
 
     #    nose.tools.assert_equal(wkey.verify(reparsedM), reparsedM.signatures())
 
-    def testHelloKey(self):
-        self.oneKeyRSA("helloKey.gpg")
+    #def testHelloKey(self):
+    #    self.oneKeyRSA("helloKey.gpg")
 
 class TestDecryption:
     def oneSymmetric(self, pss, cnt, path):

@@ -5,8 +5,8 @@ import Crypto.Random.random
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.asymmetric import rsa, padding#, dsa
-from cryptography.hazmat.primitives.interfaces import RSAPrivateKey, RSAPublicKey, DSAPublicKey
+from cryptography.hazmat.primitives.asymmetric import rsa, padding, dsa
+from cryptography.hazmat.primitives.interfaces import RSAPrivateKey, RSAPublicKey, DSAPublicKey, DSAPrivateKey
 from cryptography.exceptions import InvalidSignature
 import Crypto.Hash.MD5
 import Crypto.Hash.RIPEMD
@@ -67,7 +67,7 @@ class Wrapper:
             raise Exception("TODO: https://github.com/pyca/cryptography/pull/912")
         else: # RSA
             try:
-                verifier = key.verifier(s.data[0], padding.PKCS1v15(), h, default_backend())
+                verifier = key.verifier(s.data[0], padding.PKCS1v15(), h)
                 verifier.update(m)
                 verifier.verify()
             except InvalidSignature:
@@ -107,7 +107,7 @@ class Wrapper:
         else:
             packet = self._parse_packet(packet)
 
-        if isinstance(packet, OpenPGP.SecretKeyPacket) or isinstance(packet, Crypto.PublicKey.RSA._RSAobj) or isinstance(packet, Crypto.PublicKey.DSA._DSAobj) or (hasattr(packet, '__getitem__') and isinstance(packet[0], OpenPGP.SecretKeyPacket)):
+        if isinstance(packet, OpenPGP.SecretKeyPacket) or isinstance(packet, RSAPrivateKey) or isinstance(packet, DSAPrivateKey) or (hasattr(packet, '__getitem__') and isinstance(packet[0], OpenPGP.SecretKeyPacket)):
             key = packet
             message = self._message
         else:
@@ -120,16 +120,16 @@ class Wrapper:
         if isinstance(message, OpenPGP.Message):
             message = message.signature_and_data()[1]
 
-        if not (isinstance(key, Crypto.PublicKey.RSA._RSAobj) or isinstance(packet, Crypto.PublicKey.DSA._DSAobj)):
+        if not (isinstance(key, RSAPrivateKey) or isinstance(key, DSAPrivateKey)):
             key = self.__class__(key)
             if not keyid:
                 keyid = key.key().fingerprint()[-16:]
             key = key.private_key(keyid)
 
         key_algorithm = None
-        if isinstance(key, Crypto.PublicKey.RSA._RSAobj):
+        if isinstance(key, RSAPrivateKey):
             key_algorithm = 'RSA'
-        elif isinstance(key, Crypto.PublicKey.DSA._DSAobj):
+        elif isinstance(key, DSAPrivateKey):
             key_algorithm = 'DSA'
 
         sig = OpenPGP.SignaturePacket(message, key_algorithm, hash.upper())
@@ -141,14 +141,19 @@ class Wrapper:
             return list(key.sign(h.new(m).digest()[0:int(Crypto.Util.number.size(key.q) / 8)],
                 Crypto.Random.random.StrongRandom().randint(1,key.q-1)))
 
+        def doRSA(h, m):
+            ctx = key.signer(padding.PKCS1v15(), h())
+            ctx.update(m)
+            return [ctx.finalize()]
+
         sig.sign_data({'RSA': {
-                'MD5':       lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.MD5.new(m))],
-                'RIPEMD160': lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.RIPEMD.new(m))],
-                'SHA1':      lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA.new(m))],
-                'SHA224':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA224.new(m))],
-                'SHA256':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA256.new(m))],
-                'SHA384':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA384.new(m))],
-                'SHA512':    lambda m: [Crypto.Signature.PKCS1_v1_5.new(key).sign(Crypto.Hash.SHA512.new(m))],
+                'MD5':       lambda m: doRSA(hashes.MD5, m),
+                'RIPEMD160': lambda m: doRSA(hashes.RIPEMD160, m),
+                'SHA1':      lambda m: doRSA(hashes.SHA1, m),
+                'SHA224':    lambda m: doRSA(hashes.SHA224, m),
+                'SHA256':    lambda m: doRSA(hashes.SHA256, m),
+                'SHA384':    lambda m: doRSA(hashes.SHA384, m),
+                'SHA512':    lambda m: doRSA(hashes.SHA512, m)
             }, 'DSA': {
                 'MD5':       lambda m: doDSA(Crypto.Hash.MD5, m),
                 'RIPEMD160': lambda m: doDSA(Crypto.Hash.RIPEMD, m),
@@ -218,7 +223,7 @@ class Wrapper:
         elif not isinstance(packet, OpenPGP.Message):
             packet = OpenPGP.Message.parse(packet)
 
-        if isinstance(packet, OpenPGP.SecretKeyPacket) or isinstance(packet, Crypto.PublicKey.RSA._RSAobj) or (hasattr(packet, '__getitem__') and isinstance(packet[0], OpenPGP.SecretKeyPacket)):
+        if isinstance(packet, OpenPGP.SecretKeyPacket) or isinstance(packet, rsa.RSAPrivateKey) or (hasattr(packet, '__getitem__') and isinstance(packet[0], OpenPGP.SecretKeyPacket)):
             keys = packet
         else:
             keys = self._key
@@ -227,12 +232,12 @@ class Wrapper:
         if not keys or not self._message:
             return None # Missing some data
 
-        if not isinstance(keys, Crypto.PublicKey.RSA._RSAobj):
+        if not isinstance(keys, rsa.RSAPrivateKey):
             keys = self.__class__(keys)
 
         for p in self._message:
             if isinstance(p, OpenPGP.AsymmetricSessionKeyPacket):
-                if isinstance(keys, Crypto.PublicKey.RSA._RSAobj):
+                if isinstance(keys, rsa.RSAPrivateKey):
                     sk = self.try_decrypt_session(keys, p.encrypted_data[2:])
                 elif len(p.keyid.replace('0','')) < 1:
                     for k in keys.key:
@@ -254,8 +259,7 @@ class Wrapper:
 
     @classmethod
     def try_decrypt_session(cls, key, edata):
-        pkcs15 = Crypto.Cipher.PKCS1_v1_5.new(key)
-        data = pkcs15.decrypt(edata, Crypto.Random.new().read(len(edata)))
+        data = key.decrypt(edata, padding.PKCS1v15())
         sk = data[1:len(data)-2]
         chk = unpack('!H', data[-2:])[0]
 
@@ -411,33 +415,40 @@ class Wrapper:
 
     @classmethod
     def convert_key(cls, packet, private=False):
-        if isinstance(packet, RSAPrivateKey) or isinstance(packet, RSAPublicKey) or isinstance(packet, Crypto.PublicKey.DSA._DSAobj):
-            return packet
+        if isinstance(packet, RSAPrivateKey) or isinstance(packet, RSAPublicKey) or isinstance(packet, DSAPublicKey) or isinstance(packet, DSAPrivateKey):
+            if (not private) and (isinstance(packet, DSAPrivateKey) or isinstance(packet, RSAPrivateKey)):
+                return packet.public_key()
+            else:
+                return packet
+
         packet = cls._parse_packet(packet)
         if isinstance(packet, OpenPGP.Message):
             packet = packet[0]
 
         if packet.key_algorithm_name() == 'DSA':
-          public = (
+          params = dsa.DSAParameterNumbers(
                     cls._bytes_to_long(packet.key['p']),
                     cls._bytes_to_long(packet.key['q']),
-                    cls._bytes_to_long(packet.key['g']),
-                    cls._bytes_to_long(packet.key['y']))
+                    cls._bytes_to_long(packet.key['g']))
+          public = dsa.DSAPublicNumbers(
+                    cls._bytes_to_long(packet.key['y']),
+                    params)
           if private:
-              private = (public[0:-1]) + (cls._bytes_to_long(packet.key['x']),) + public[-1:]
-              return dsa.DSAPrivateKey(*private)
+              return dsa.DSAPrivateNumbers(packet.key['x'], public).private_key(default_backend())
           else:
-              return dsa.DSAPublicKey(*public)
+              return public.public_key(default_backend())
         else: # RSA
-          public = (cls._bytes_to_long(packet.key['e']), cls._bytes_to_long(packet.key['n']))
+          public = rsa.RSAPublicNumbers(cls._bytes_to_long(packet.key['e']), cls._bytes_to_long(packet.key['n']))
           if private:
               d = cls._bytes_to_long(packet.key['d'])
               p = cls._bytes_to_long(packet.key['q'])
               q = cls._bytes_to_long(packet.key['p'])
-              private = (p, q, d, d % (p - 1), d % (q - 1), cls._bytes_to_long(packet.key['u']))
-              return rsa.RSAPrivateKey(*(private + public))
+              dmp1 = rsa.rsa_crt_dmp1(d, p)
+              dmq1 = rsa.rsa_crt_dmp1(d, q)
+              u = cls._bytes_to_long(packet.key['u'])
+              return rsa.RSAPrivateNumbers(p, q, d, dmp1, dmq1, u, public).private_key(default_backend())
           else:
-              return rsa.RSAPublicKey(*public)
+              return public.public_key(default_backend())
 
     @classmethod
     def convert_public_key(cls, packet):
