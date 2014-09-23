@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from struct import unpack
+from struct import pack, unpack
 import Crypto.Random
 import Crypto.Random.random
 from cryptography.hazmat.backends import default_backend, openssl
@@ -8,17 +8,8 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding, dsa
 from cryptography.hazmat.primitives.interfaces import RSAPrivateKey, RSAPublicKey, DSAPublicKey, DSAPrivateKey
 from cryptography.exceptions import InvalidSignature
-import Crypto.Hash.MD5
-import Crypto.Hash.RIPEMD
-import Crypto.Hash.SHA
-import Crypto.Hash.SHA224
-import Crypto.Hash.SHA256
-import Crypto.Hash.SHA384
-import Crypto.Hash.SHA512
 import OpenPGP
-import hashlib, math
-import sys
-import copy
+import hashlib, math, sys, copy, collections
 
 class Wrapper:
     """ A wrapper for using the classes from OpenPGP.py with cryptography """
@@ -277,6 +268,47 @@ class Wrapper:
             return None
         return (ord(data[0:1]), sk)
 
+    def encrypt(self, passphrases_and_keys, symmetric_algorithm=9):
+        cipher, key_bytes, key_block_bytes = self.get_cipher(symmetric_algorithm)
+        if not cipher:
+            raise Exception("Unsupported cipher")
+        prefix = Crypto.Random.new().read(key_block_bytes)
+        prefix += prefix[-2:]
+
+        key = Crypto.Random.new().read(key_bytes)
+        session_cipher = cipher(key)(None)
+
+        to_encrypt = prefix + self._message.to_bytes()
+        mdc = OpenPGP.ModificationDetectionCodePacket(Crypto.Hash.SHA.new(to_encrypt + b'\xD3\x14').digest())
+        to_encrypt += mdc.to_bytes()
+
+        def doEncrypt(cipher):
+          ctx = cipher.encryptor()
+          return lambda x: ctx.update(x) + ctx.finalize()
+
+        encrypted = [OpenPGP.IntegrityProtectedDataPacket(self._block_pad_unpad(key_block_bytes, to_encrypt, doEncrypt(session_cipher)))]
+
+        if not isinstance(passphrases_and_keys, collections.Iterable) or hasattr(passphrases_and_keys, 'encode'):
+            passphrases_and_keys = [passphrases_and_keys]
+
+        for psswd in passphrases_and_keys:
+          if isinstance(psswd, OpenPGP.PublicKeyPacket):
+              if not psswd.key_algorithm in [1,2,3]:
+                  raise Exception("Only RSA keys are supported.")
+              rsa = self.__class__(psswd).public_key()
+              pkcs1 = Crypto.Cipher.PKCS1_v1_5.new(rsa)
+              esk = pkcs1.encrypt(pack('!B', symmetric_algorithm) + key + pack('!H', OpenPGP.checksum(key)))
+              esk = pack('!H', OpenPGP.bitlength(esk)) + esk
+              encrypted = [OpenPGP.AsymmetricSessionKeyPacket(psswd.key_algorithm, psswd.fingerprint(), esk)] + encrypted
+          elif hasattr(psswd, 'encode'):
+              psswd = psswd.encode('utf-8')
+              s2k = OpenPGP.S2K(Crypto.Random.new().read(10))
+              packet_cipher = cipher(s2k.make_key(psswd, key_bytes))(None)
+              esk = self._block_pad_unpad(key_block_bytes, pack('!B', symmetric_algorithm) + key, doEncrypt(packet_cipher))
+              encrypted = [OpenPGP.SymmetricSessionKeyPacket(s2k, esk, symmetric_algorithm)] + encrypted
+
+        return OpenPGP.Message(encrypted)
+
     def decrypt_symmetric(self, passphrase):
         epacket = self.encrypted_data()
         if hasattr(passphrase, 'encode'):
@@ -402,7 +434,7 @@ class Wrapper:
     def get_cipher(cls, algo):
         def cipher(m, ks, bs):
             return (lambda k: lambda iv:
-                    Cipher(m(k), modes.CFB(iv), default_backend()),
+                    Cipher(m(k), modes.CFB(iv or b'\0'*bs), default_backend()),
                 ks, bs)
 
         if algo == 2:
@@ -471,3 +503,8 @@ class Wrapper:
         return int.from_bytes(b, byteorder='big', signed=False)
       else:
         return long(b.encode('hex'), 16)
+
+    @classmethod
+    def _block_pad_unpad(cls, siz, bs, go):
+        pad_amount = siz - (len(bs) % siz)
+        return go(bs + b'\0'*pad_amount)[:-pad_amount]

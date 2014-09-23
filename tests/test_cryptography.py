@@ -118,19 +118,17 @@ class TestDecryption:
             if(isinstance(p,OpenPGP.LiteralDataPacket)):
                 nose.tools.assert_equal(p.data, b"hello\n")
 
-"""
 class TestEncryption:
     def testEncryptSymmetric(self):
-        $data = new OpenPGP_LiteralDataPacket('This is text.', array('format' => 'u', 'filename' => 'stuff.txt'))
-        $encrypted = OpenPGP_Crypt_AES_TripleDES::encrypt('secret', new OpenPGP_Message(array($data)))
-        $decrypted = OpenPGP_Crypt_AES_TripleDES::decryptSymmetric('secret', $encrypted)
-        self.assertEquals($decrypted[0]->data, 'This is text.')
+        data = OpenPGP.LiteralDataPacket('This is text.', 'u', 'stuff.txt')
+        encrypted = OpenPGP.cryptography.Wrapper(OpenPGP.Message([data])).encrypt('secret')
+        decrypted = OpenPGP.cryptography.Wrapper(encrypted).decrypt_symmetric('secret')
+        nose.tools.assert_equal(decrypted[0].data, b'This is text.')
 
     def testEncryptAsymmetric(self):
-        $key = OpenPGP_Message::parse(file_get_contents(dirname(__FILE__) . '/data/helloKey.gpg'))
-        $data = new OpenPGP_LiteralDataPacket('This is text.', array('format' => 'u', 'filename' => 'stuff.txt'))
-        $encrypted = OpenPGP_Crypt_AES_TripleDES::encrypt($key, new OpenPGP_Message(array($data)))
-        $decryptor = new OpenPGP_Crypt_RSA($key)
-        $decrypted = $decryptor->decrypt($encrypted)
-        self.assertEquals($decrypted[0]->data, b'This is text.')
-"""
+        key = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/helloKey.gpg', 'rb').read())
+        data = OpenPGP.LiteralDataPacket('This is text.', 'u', 'stuff.txt')
+        encrypted = OpenPGP.Crypto.Wrapper(OpenPGP.Message([data])).encrypt(key)
+        decryptor = OpenPGP.Crypto.Wrapper(key)
+        decrypted = decryptor.decrypt(encrypted)
+        nose.tools.assert_equal(decrypted[0].data, b'This is text.')
