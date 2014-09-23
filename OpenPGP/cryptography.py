@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from struct import unpack
 import Crypto.Random
 import Crypto.Random.random
-from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.backends import default_backend, openssl
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding, dsa
@@ -138,8 +138,9 @@ class Wrapper:
             sig.hashed_subpackets.append(OpenPGP.SignaturePacket.IssuerPacket(keyid))
 
         def doDSA(h, m):
-            return list(key.sign(h.new(m).digest()[0:int(Crypto.Util.number.size(key.q) / 8)],
-                Crypto.Random.random.StrongRandom().randint(1,key.q-1)))
+            ctx = key.signer(h())
+            ctx.update(m)
+            return [ctx.finalize()]
 
         def doRSA(h, m):
             ctx = key.signer(padding.PKCS1v15(), h())
@@ -155,13 +156,13 @@ class Wrapper:
                 'SHA384':    lambda m: doRSA(hashes.SHA384, m),
                 'SHA512':    lambda m: doRSA(hashes.SHA512, m)
             }, 'DSA': {
-                'MD5':       lambda m: doDSA(Crypto.Hash.MD5, m),
-                'RIPEMD160': lambda m: doDSA(Crypto.Hash.RIPEMD, m),
-                'SHA1':      lambda m: doDSA(Crypto.Hash.SHA, m),
-                'SHA224':    lambda m: doDSA(Crypto.Hash.SHA224, m),
-                'SHA256':    lambda m: doDSA(Crypto.Hash.SHA256, m),
-                'SHA384':    lambda m: doDSA(Crypto.Hash.SHA384, m),
-                'SHA512':    lambda m: doDSA(Crypto.Hash.SHA512, m),
+                'MD5':       lambda m: doDSA(hashes.MD5, m),
+                'RIPEMD160': lambda m: doDSA(hashes.RIPME160, m),
+                'SHA1':      lambda m: doDSA(hashes.SHA1, m),
+                'SHA224':    lambda m: doDSA(hashes.SHA224, m),
+                'SHA256':    lambda m: doDSA(hashes.SHA256, m),
+                'SHA384':    lambda m: doDSA(hashes.SHA384, m),
+                'SHA512':    lambda m: doDSA(hashes.SHA512, m)
             }})
 
         return OpenPGP.Message([sig, message])
@@ -384,7 +385,7 @@ class Wrapper:
 
     @classmethod
     def _parse_packet(cls, packet):
-        if isinstance(packet, OpenPGP.Packet) or isinstance(packet, OpenPGP.Message) or isinstance(packet, Crypto.PublicKey.RSA._RSAobj) or isinstance(packet, Crypto.PublicKey.DSA._DSAobj):
+        if isinstance(packet, OpenPGP.Packet) or isinstance(packet, OpenPGP.Message) or isinstance(packet, RSAPublicKey) or isinstance(packet, RSAPrivateKey) or isinstance(packet, DSAPublicKey) or isinstance(packet, DSAPrivateKey):
             return packet
         elif isinstance(packet, tuple) or isinstance(packet, list):
             if sys.version_info[0] == 2 and isinstance(packet[0], long) or isinstance(packet[0], int):
@@ -440,9 +441,9 @@ class Wrapper:
                     cls._bytes_to_long(packet.key['y']),
                     params)
           if private:
-              return dsa.DSAPrivateNumbers(cls._bytes_to_long(packet.key['x']), public).private_key(default_backend())
+              return dsa.DSAPrivateNumbers(cls._bytes_to_long(packet.key['x']), public).private_key(openssl.backend)
           else:
-              return public.public_key(default_backend())
+              return public.public_key(openssl.backend)
         else: # RSA
           public = rsa.RSAPublicNumbers(cls._bytes_to_long(packet.key['e']), cls._bytes_to_long(packet.key['n']))
           if private:
