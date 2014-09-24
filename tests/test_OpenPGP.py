@@ -2,6 +2,13 @@ import nose
 import os.path
 import OpenPGP
 
+class TestASCIIArmor:
+    def test_unarmor_one(self):
+         armored = open(os.path.dirname(__file__) + '/data/helloKey.asc', 'r').read()
+         _, unarmored = OpenPGP.unarmor(armored)[0]
+         message = OpenPGP.Message.parse(unarmored)
+         nose.tools.assert_equal(message[0].fingerprint(), '421F28FEAAD222F856C8FFD5D4D54EA16F87040E')
+
 class TestSerialization:
     def one_serialization(self, path):
         inm = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/' + path, 'rb').read())

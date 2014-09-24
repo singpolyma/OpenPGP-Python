@@ -4,11 +4,45 @@
 from struct import pack, unpack
 from time import time
 from math import floor, log
-import zlib, bz2
+import zlib, bz2, base64
 import hashlib
 import re
 import sys
 import itertools
+
+def unarmor(text):
+    """ Convert ASCII-armored data into binary
+        http://tools.ietf.org/html/rfc4880#section-6
+        http://tools.ietf.org/html/rfc2045
+    """
+    result = []
+    chunks = re.findall(r'\n-----BEGIN [^-]+-----\n(.*?)\n-----END [^-]+-----\n', "\n" + text.replace("\r\n", "\n").replace("\r", "\n") + "\n", re.S)
+
+    for chunk in chunks:
+        headers, data = chunk.split("\n\n")
+        crc = data[-5:]
+        data = base64.b64decode(data[:-5].encode('utf-8'))
+        if crc[0] != '=':
+            raise OpenPGPException('CRC24 check failed')
+        if crc24(data) != unpack('!L', b'\0' + base64.b64decode(crc[1:].encode('utf-8')))[0]:
+            raise OpenPGPException('CRC24 check failed')
+        result.append((headers, data))
+
+    return result
+
+def crc24(data):
+    """
+        http://tools.ietf.org/html/rfc4880#section-6
+        http://tools.ietf.org/html/rfc4880#section-6.1
+    """
+    crc = 0x00b704ce
+    for i in range(0, len(data)):
+        crc ^= (ord(data[i:i+1]) & 255) << 16
+        for j in range(0, 8):
+            crc <<= 1
+            if (crc & 0x01000000):
+                crc ^= 0x01864cfb
+    return crc & 0x00ffffff
 
 def bitlength(data):
     """ http://tools.ietf.org/html/rfc4880#section-12.2 """
