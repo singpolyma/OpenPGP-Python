@@ -100,13 +100,26 @@ def enarmor(data, marker = 'PUBLIC KEY BLOCK', headers = None, lineWidth = 64) :
             yield "%(key)s: %(value)s" % locals()
         yield '' # empty line
 
-        text = base64.b64encode(data)
+        text = base64.b64encode(data) # bytes in Python 3!
+        try :
+            # Python 3
+            textStr = text.decode('ascii')
+        except Exception :
+            # Python 2
+            textStr = text
         # max 76 chars per line!
-        for line in _textwrap.wrap(text, width = lineWidth) :
+        for line in _textwrap.wrap(textStr, width = lineWidth) :
             yield line
         # unsigned long with 4 bypte/32 bit in byte-order Big Endian
-        crc32sum = _struct.pack('>L', crc24(data))
-        yield '=' + base64.b64encode(crc32sum[1:]) # take only the last 3 bytes
+        checksumBytes = _struct.pack('>L', crc24(data))
+        checksumBase64 = base64.b64encode(checksumBytes[1:])  # bytes in Python 3!
+        try :
+            # Python 3
+            checksumStr = checksumBase64.decode('ascii')
+        except Exception :
+            # Python 2
+            checksumStr = checksumBase64
+        yield '=' + str(checksumStr) # take only the last 3 bytes
         yield '-----END PGP ' + str(marker).upper() + '-----'
         yield '' # final line break
         return
