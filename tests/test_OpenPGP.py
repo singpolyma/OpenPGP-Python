@@ -11,8 +11,9 @@ class TestASCIIArmor:
 
     def test_enarmor_one(self):
          expected = self.readLocalFile('/data/helloKey.asc')
-         header, unarmored = OpenPGP.unarmor(expected)[0]
-         actual = OpenPGP.enarmor(unarmored, headers = [('Version', 'GnuPG v1.4.11 (GNU/Linux)')])
+         messages = OpenPGP.unarmor(expected) # [(header, data), ...]
+         header, data = messages[0]
+         actual = OpenPGP.enarmor(data, headers = [keyValue.split(': ', 1) for keyValue in header.split('\n')])
          nose.tools.assert_equal(actual, expected)
 
     def readLocalFile(self, filename):
