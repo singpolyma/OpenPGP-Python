@@ -40,7 +40,7 @@ def crc24(data):
     """
     crc = 0x00b704ce
     for i in range(0, len(data)):
-        crc ^= (ord(data[i:i + 1]) & 255) << 16
+        crc ^= (ord(data[i:i+1]) & 255) << 16
         for j in range(0, 8):
             crc <<= 1
             if (crc & 0x01000000):
@@ -123,7 +123,7 @@ def bitlength(data):
 def checksum(data):
     mkChk = 0
     for i in range(0, len(data)):
-        mkChk = (mkChk + ord(data[i:i + 1])) % 65536
+        mkChk = (mkChk + ord(data[i:i+1])) % 65536
     return mkChk
 
 def _gen_one(i):
@@ -144,7 +144,7 @@ class OpenPGPException(Exception):
     pass # Everything inherited
 
 class S2K(object):
-    def __init__(self, salt = b'BADSALT', hash_algorithm = 10, count = 65536, type = 3):
+    def __init__(self, salt=b'BADSALT', hash_algorithm=10, count=65536, type=3):
         self.type = type
         self.hash_algorithm = hash_algorithm
         self.salt = salt
@@ -152,21 +152,21 @@ class S2K(object):
 
     def to_bytes(self):
         bs = pack('!B', self.type)
-        if self.type in [0, 1, 3]:
+        if self.type in [0,1,3]:
             bs += pack('!B', self.hash_algorithm)
-        if self.type in [1, 3]:
+        if self.type in [1,3]:
             bs += self.salt
         if self.type in [3]:
             bs += pack('!B', self.encode_s2k_count(self.count))
         return bs
 
-    def raw_hash(self, s, prefix = b''):
+    def raw_hash(self, s, prefix=b''):
         hasher = hashlib.new(SignaturePacket.hash_algorithms[self.hash_algorithm].lower())
         hasher.update(prefix)
         hasher.update(s)
         return hasher.digest()
 
-    def iterate(self, s, prefix = b''):
+    def iterate(self, s, prefix=b''):
         hasher = hashlib.new(SignaturePacket.hash_algorithms[self.hash_algorithm].lower())
         hasher.update(prefix)
         hasher.update(s)
@@ -302,7 +302,7 @@ class Message(object):
 
         return m
 
-    def __init__(self, packets = []):
+    def __init__(self, packets=[]):
         self._packets_start = packets
         self._packets_end = []
         self._input = None
@@ -555,7 +555,7 @@ class Packet(object):
              g.push(chunk[head_length:])
         return (tag, data_length)
 
-    def __init__(self, data = None):
+    def __init__(self, data=None):
         for tag in Packet.tags:
             if Packet.tags[tag] == self.__class__:
                 self.tag = tag
@@ -622,7 +622,7 @@ class AsymmetricSessionKeyPacket(Packet):
     """ OpenPGP Public-Key Encrypted Session Key packet (tag 1).
         http://tools.ietf.org/html/rfc4880#section-5.1
     """
-    def __init__(self, key_algorithm = '', keyid = '', encrypted_data = '', version = 3):
+    def __init__(self, key_algorithm='', keyid='', encrypted_data='', version=3):
         self.version = version
         self.keyid = keyid[-16:]
         self.key_algorithm = key_algorithm
@@ -634,7 +634,7 @@ class AsymmetricSessionKeyPacket(Packet):
             rawkeyid = self.read_bytes(8)
             self.keyid = '';
             for i in range(0, len(rawkeyid)): # Store KeyID in Hex
-                self.keyid += '%02X' % ord(rawkeyid[i:i + 1])
+                self.keyid += '%02X' % ord(rawkeyid[i:i+1])
 
             self.key_algorithm = ord(self.read_byte())
             self.encrypted_data = self.read_bytes(self.length)
@@ -645,7 +645,7 @@ class AsymmetricSessionKeyPacket(Packet):
         b = pack('!B', self.version)
 
         for i in range(0, len(self.keyid), 2):
-            b += pack('!B', int(self.keyid[i] + self.keyid[i + 1], 16))
+            b += pack('!B', int(self.keyid[i] + self.keyid[i+1], 16))
 
         b += pack('!B', self.key_algorithm)
         b += self.encrypted_data
@@ -655,7 +655,7 @@ class SignaturePacket(Packet):
     """ OpenPGP Signature packet (tag 2).
         http://tools.ietf.org/html/rfc4880#section-5.2
     """
-    def __init__(self, data = None, key_algorithm = None, hash_algorithm = None):
+    def __init__(self, data=None, key_algorithm=None, hash_algorithm=None):
         super(SignaturePacket, self).__init__()
         self.version = 4 # Default to version 4 sigs
         self.hash_algorithm = hash_algorithm
@@ -701,7 +701,7 @@ class SignaturePacket(Packet):
                 hex_mpi = '%02X' % mpi
                 final = b''
                 for i in range(0, len(hex_mpi), 2):
-                    final += pack('!B', int(hex_mpi[i:i + 2], 16))
+                    final += pack('!B', int(hex_mpi[i:i+2], 16))
                 self.data.append(final)
             else:
                 self.data.append(mpi)
@@ -716,7 +716,7 @@ class SignaturePacket(Packet):
             keyid = self.read_bytes(8)
             keyidHex = '';
             for i in range(0, len(keyid)): # Store KeyID in Hex
-                keyidHex += '%02X' % ord(keyid[i:i + 1])
+                keyidHex += '%02X' % ord(keyid[i:i+1])
 
             self.hashed_subpackets = []
             self.unhashed_subpackets = [
@@ -766,7 +766,7 @@ class SignaturePacket(Packet):
 
         return body
 
-    def body(self, trailer = False):
+    def body(self, trailer=False):
         if self.version == 2 or self.version == 3:
             body = pack('!B', self.version) + pack('!B', 5) + pack('!B', self.signature_type)
 
@@ -778,7 +778,7 @@ class SignaturePacket(Packet):
             for p in self.unhashed_subpackets:
                 if isinstance(p, SignaturePacket.IssuerPacket):
                     for i in range(0, len(p.data), 2):
-                        body += pack('!B', int(p.data[i:i + 2], 16))
+                        body += pack('!B', int(p.data[i:i+2], 16))
                     break
 
             body += pack('!B', self.key_algorithm)
@@ -856,7 +856,7 @@ class SignaturePacket(Packet):
         packet = klass()
         packet.tag = tag
         packet.input = PushbackGenerator(_gen_one(input_data[1:length]))
-        packet.length = length - 1
+        packet.length = length-1
         packet.read()
         packet.input = None
         packet.length = None
@@ -865,7 +865,7 @@ class SignaturePacket(Packet):
         return (packet, length_of_length + length)
 
     class Subpacket(Packet):
-        def __init__(self, data = None):
+        def __init__(self, data=None):
              super(SignaturePacket.Subpacket, self).__init__()
              for tag in SignaturePacket.subpacket_types:
                  if SignaturePacket.subpacket_types[tag] == self.__class__:
@@ -874,13 +874,13 @@ class SignaturePacket(Packet):
 
         def header_and_body(self):
             body = self.body() or '' # Get body first, we'll need its length
-            size = pack('!B', 255) + pack('!L', len(body) + 1) # Use 5-octet lengths + 1 for tag as first packet body octet
+            size = pack('!B', 255) + pack('!L', len(body)+1) # Use 5-octet lengths + 1 for tag as first packet body octet
             tag = pack('!B', self.tag)
             return {'header': size + tag, 'body': body}
 
     class SignatureCreationTimePacket(Subpacket):
         """ http://tools.ietf.org/html/rfc4880#section-5.2.3.4 """
-        def __init__(self, time = time()):
+        def __init__(self, time=time()):
             super(SignaturePacket.SignatureCreationTimePacket, self).__init__()
             self.data = time
 
@@ -914,7 +914,7 @@ class SignaturePacket(Packet):
 
     class RegularExpressionPacket(Subpacket):
         def read(self):
-            self.data = self.read_bytes(self.length - 1)
+            self.data = self.read_bytes(self.length-1)
 
         def body(self):
             return self.data + pack('!B', 0)
@@ -962,13 +962,13 @@ class SignaturePacket(Packet):
             body += pack('!B', self.key_algorithm)
 
             for i in range(0, len(self.data), 2):
-                body += pack('!B', int(self.data[i] + self.data[i + 1], 16))
+                body += pack('!B', int(self.data[i] + self.data[i+1], 16))
 
             return body
 
     class IssuerPacket(Subpacket):
         """ http://tools.ietf.org/html/rfc4880#section-5.2.3.5 """
-        def __init__(self, keyid = None):
+        def __init__(self, keyid=None):
             super(SignaturePacket.IssuerPacket, self).__init__()
             self.data = keyid
 
@@ -980,7 +980,7 @@ class SignaturePacket(Packet):
         def body(self):
             b = b''
             for i in range(0, len(self.data), 2):
-                b += pack('!B', int(self.data[i] + self.data[i + 1], 16))
+                b += pack('!B', int(self.data[i] + self.data[i+1], 16))
             return b
 
     class NotationDataPacket(Subpacket):
@@ -1057,7 +1057,7 @@ class SignaturePacket(Packet):
             return self.data
 
     class KeyFlagsPacket(Subpacket):
-        def __init__(self, flags = []):
+        def __init__(self, flags=[]):
             super(SignaturePacket.KeyFlagsPacket, self).__init__()
             self.flags = flags
 
@@ -1143,7 +1143,7 @@ class SymmetricSessionKeyPacket(Packet):
     """ OpenPGP Symmetric-Key Encrypted Session Key packet (tag 3).
         http://tools.ietf.org/html/rfc4880#section-5.3
     """
-    def __init__(self, s2k = None, encrypted_data = b'', symmetric_algorithm = 9, version = 3):
+    def __init__(self, s2k=None, encrypted_data=b'', symmetric_algorithm=9, version=3):
         self.version = version
         self.symmetric_algorithm = symmetric_algorithm
         self.s2k = s2k
@@ -1177,7 +1177,7 @@ class OnePassSignaturePacket(Packet):
     def body(self):
         body = pack('!B', self.version) + pack('!B', self.signature_type) + pack('!B', self.hash_algorithm) + pack('!B', self.key_algorithm)
         for i in range(0, len(self.key_id), 2):
-          body += pack('!B', int(self.key_id[i] + self.key_id[i + 1], 16))
+          body += pack('!B', int(self.key_id[i] + self.key_id[i+1], 16))
         body += pack('!B', int(self.nested))
         return body
 
@@ -1188,7 +1188,7 @@ class PublicKeyPacket(Packet):
         http://tools.ietf.org/html/rfc4880#section-11.1
         http://tools.ietf.org/html/rfc4880#section-12
     """
-    def __init__(self, keydata = None, version = 4, algorithm = 1, timestamp = time()):
+    def __init__(self, keydata=None, version=4, algorithm=1, timestamp=time()):
         super(PublicKeyPacket, self).__init__()
         self._fingerprint = None
         self.version = version
@@ -1320,13 +1320,13 @@ class SecretKeyPacket(PublicKeyPacket):
         http://tools.ietf.org/html/rfc4880#section-11.2
         http://tools.ietf.org/html/rfc4880#section-12
     """
-    def __init__(self, keydata = None, version = 4, algorithm = 1, timestamp = time()):
+    def __init__(self, keydata=None, version=4, algorithm=1, timestamp=time()):
         super(SecretKeyPacket, self).__init__(keydata, version, algorithm, timestamp)
         self.s2k_useage = 0
         if isinstance(keydata, tuple) or isinstance(keydata, list):
             public_len = len(self.key_fields[self.key_algorithm])
             for i in range(public_len, len(keydata)):
-                 self.key[self.secret_key_fields[self.key_algorithm][i - public_len]] = keydata[i]
+                 self.key[self.secret_key_fields[self.key_algorithm][i-public_len]] = keydata[i]
 
     def read(self):
         super(SecretKeyPacket, self).read() # All the fields from PublicKey
@@ -1370,7 +1370,7 @@ class SecretKeyPacket(PublicKeyPacket):
             # 2-octet checksum
             chk = 0
             for i in range(0, len(secret_material)):
-                chk = (chk + ord(secret_material[i:i + 1])) % 65536
+                chk = (chk + ord(secret_material[i:i+1])) % 65536
             b += pack('!H', chk)
 
         return b
@@ -1449,7 +1449,7 @@ class LiteralDataPacket(Packet):
     """ OpenPGP Literal Data packet (tag 11).
         http://tools.ietf.org/html/rfc4880#section-5.9
     """
-    def __init__(self, data = None, format = 'b', filename = 'data', timestamp = time()):
+    def __init__(self, data=None, format='b', filename='data', timestamp=time()):
         super(LiteralDataPacket, self).__init__()
         if hasattr(data, 'encode'):
             data = data.encode('utf-8')
@@ -1485,7 +1485,7 @@ class UserIDPacket(Packet):
         http://tools.ietf.org/html/rfc4880#section-5.11
         http://tools.ietf.org/html/rfc2822
     """
-    def __init__(self, name = '', comment = None, email = None):
+    def __init__(self, name='', comment=None, email=None):
         super(UserIDPacket, self).__init__()
         self.name = self.comment = self.email = None
         self.text = ''
@@ -1526,9 +1526,9 @@ class UserIDPacket(Packet):
         if self.name:
             text.append(self.name)
         if self.comment:
-            text.append('(' + self.comment + ')')
+            text.append('('+self.comment+')')
         if self.email:
-            text.append('<' + self.email + '>')
+            text.append('<'+self.email+'>')
         if len(text) < 1:
             text = [self.text]
         return ' '.join(text)
@@ -1547,7 +1547,7 @@ class IntegrityProtectedDataPacket(EncryptedDataPacket):
     """ OpenPGP Sym. Encrypted Integrity Protected Data packet (tag 18).
         http://tools.ietf.org/html/rfc4880#section-5.13
     """
-    def __init__(self, data = b'', version = 1):
+    def __init__(self, data=b'', version=1):
         self.version = version
         self.data = data
 
@@ -1562,7 +1562,7 @@ class ModificationDetectionCodePacket(Packet):
     """ OpenPGP Modification Detection Code packet (tag 19).
         http://tools.ietf.org/html/rfc4880#section-5.14
     """
-    def __init__(self, sha1 = ''):
+    def __init__(self, sha1=''):
         super(ModificationDetectionCodePacket, self).__init__()
         self.data = sha1
 
