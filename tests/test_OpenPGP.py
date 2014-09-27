@@ -4,10 +4,21 @@ import OpenPGP
 
 class TestASCIIArmor:
     def test_unarmor_one(self):
-         armored = open(os.path.dirname(__file__) + '/data/helloKey.asc', 'r').read()
+         armored = self.readLocalFile('/data/helloKey.asc')
          _, unarmored = OpenPGP.unarmor(armored)[0]
          message = OpenPGP.Message.parse(unarmored)
          nose.tools.assert_equal(message[0].fingerprint(), '421F28FEAAD222F856C8FFD5D4D54EA16F87040E')
+
+    def test_enarmor_one(self):
+         expected = self.readLocalFile('/data/helloKey.asc')
+         messages = OpenPGP.unarmor(expected) # [(header, data), ...]
+         header, data = messages[0]
+         actual = OpenPGP.enarmor(data, headers = [keyValue.split(': ', 1) for keyValue in header.split('\n')])
+         nose.tools.assert_equal(actual, expected)
+
+    def readLocalFile(self, filename):
+        return open(os.path.dirname(__file__) + filename, 'r').read()
+
 
 class TestSerialization:
     def one_serialization(self, path):

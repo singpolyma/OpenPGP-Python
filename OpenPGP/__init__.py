@@ -5,6 +5,8 @@ from struct import pack, unpack
 from time import time
 from math import floor, log
 import zlib, bz2, base64
+import struct as _struct # hide implementation details
+import textwrap as _textwrap # hide implementation details
 import hashlib
 import re
 import sys
@@ -30,6 +32,7 @@ def unarmor(text):
 
     return result
 
+
 def crc24(data):
     """
         http://tools.ietf.org/html/rfc4880#section-6
@@ -44,9 +47,91 @@ def crc24(data):
                 crc ^= 0x01864cfb
     return crc & 0x00ffffff
 
+
+def enarmor(data, marker = 'PUBLIC KEY BLOCK', headers = None, lineWidth = 64) :
+    """
+    @see http://tools.ietf.org/html/rfc4880#section-6.2 OpenPGP Message Format / Ascii Armor
+    @see http://tools.ietf.org/html/rfc2045 Base64 encoding
+
+    @param data: binary data to encode
+    @type  data: bytes
+
+    @param marker: The header line text is chosen based upon the type
+        of data that is being encoded in Armor, and how it is being encoded.
+        Header line texts include the following strings:
+            - MESSAGE
+            - PUBLIC KEY BLOCK
+            - PRIVATE KEY BLOCK
+            - MESSAGE, PART X/Y
+            - MESSAGE, PART X
+            - SIGNATURE
+    @type  marker: str
+
+    @param headers: key value, e.g {'Version' : 'GnuPG v2.0.22 (MingW32)'}
+    @type  headers: None | generator[(str, str)]
+
+    @param lineWidth: GnuPG uses 64 bit, RFC4880 limits to 76
+    @type  lineWidth: int
+
+    @rtype: str
+    """
+
+    def _iter_enarmor(data) :
+        """
+        @type data: bytes
+
+        @param marker: Specifies the kind of data to armor
+        @type  marker: str
+
+        @param headers: optional header fields
+            (dict keys will be sorted lexicographically)
+        @type  headers: dict | [(keyString, valueString)] | None
+
+        @rtype: generator[str]
+        """
+        yield '-----BEGIN PGP ' + str(marker).upper() + '-----'
+        headersDict = headers or {}
+        try :
+            headerItems = list(headersDict.iteritems())
+            headerItems.sort()
+        except AttributeError : # list has no 'iteritems'
+            headerItems = list(headersDict) # already list of key-value.pairs
+        for (key, value) in headerItems :
+            yield "%(key)s: %(value)s" % locals()
+        yield '' # empty line
+
+        text = base64.b64encode(data) # bytes in Python 3!
+        try :
+            # Python 3
+            textStr = text.decode('ascii')
+        except Exception :
+            # Python 2
+            textStr = text
+        # max 76 chars per line!
+        for line in _textwrap.wrap(textStr, width = lineWidth) :
+            yield line
+        # unsigned long with 4 bypte/32 bit in byte-order Big Endian
+        checksumBytes = _struct.pack('>L', crc24(data))
+        checksumBase64 = base64.b64encode(checksumBytes[1:])  # bytes in Python 3!
+        try :
+            # Python 3
+            checksumStr = checksumBase64.decode('ascii')
+        except Exception :
+            # Python 2
+            checksumStr = checksumBase64
+        yield '=' + str(checksumStr) # take only the last 3 bytes
+        yield '-----END PGP ' + str(marker).upper() + '-----'
+        yield '' # final line break
+        return
+
+    return "\n".join(_iter_enarmor(data))
+
+
+
 def bitlength(data):
     """ http://tools.ietf.org/html/rfc4880#section-12.2 """
     return (len(data) - 1) * 8 + int(floor(log(ord(data[0:1]), 2))) + 1
+
 
 def checksum(data):
     mkChk = 0
