@@ -4,13 +4,7 @@
 from struct import pack, unpack
 from time import time
 from math import floor, log
-import zlib, bz2, base64
-import struct as _struct # hide implementation details
-import textwrap as _textwrap # hide implementation details
-import hashlib
-import re
-import sys
-import itertools
+import zlib, bz2, base64, textwrap, hashlib, re, sys, itertools
 
 def unarmor(text):
     """ Convert ASCII-armored data into binary
@@ -32,7 +26,6 @@ def unarmor(text):
 
     return result
 
-
 def crc24(data):
     """
         http://tools.ietf.org/html/rfc4880#section-6
@@ -47,8 +40,7 @@ def crc24(data):
                 crc ^= 0x01864cfb
     return crc & 0x00ffffff
 
-
-def enarmor(data, marker = 'PUBLIC KEY BLOCK', headers = None, lineWidth = 64) :
+def enarmor(data, marker='PUBLIC KEY BLOCK', headers=None, lineWidth=64):
     """
     @see http://tools.ietf.org/html/rfc4880#section-6.2 OpenPGP Message Format / Ascii Armor
     @see http://tools.ietf.org/html/rfc2045 Base64 encoding
@@ -76,7 +68,7 @@ def enarmor(data, marker = 'PUBLIC KEY BLOCK', headers = None, lineWidth = 64) :
     @rtype: str
     """
 
-    def _iter_enarmor(data) :
+    def _iter_enarmor(data):
         """
         @type data: bytes
 
@@ -91,32 +83,32 @@ def enarmor(data, marker = 'PUBLIC KEY BLOCK', headers = None, lineWidth = 64) :
         """
         yield '-----BEGIN PGP ' + str(marker).upper() + '-----'
         headersDict = headers or {}
-        try :
+        try:
             headerItems = list(headersDict.iteritems())
             headerItems.sort()
-        except AttributeError : # list has no 'iteritems'
+        except AttributeError: # list has no 'iteritems'
             headerItems = list(headersDict) # already list of key-value.pairs
-        for (key, value) in headerItems :
+        for (key, value) in headerItems:
             yield "%(key)s: %(value)s" % locals()
         yield '' # empty line
 
         text = base64.b64encode(data) # bytes in Python 3!
-        try :
+        try:
             # Python 3
             textStr = text.decode('ascii')
-        except Exception :
+        except Exception:
             # Python 2
             textStr = text
         # max 76 chars per line!
-        for line in _textwrap.wrap(textStr, width = lineWidth) :
+        for line in textwrap.wrap(textStr, width = lineWidth):
             yield line
         # unsigned long with 4 bypte/32 bit in byte-order Big Endian
-        checksumBytes = _struct.pack('>L', crc24(data))
+        checksumBytes = pack('>L', crc24(data))
         checksumBase64 = base64.b64encode(checksumBytes[1:])  # bytes in Python 3!
-        try :
+        try:
             # Python 3
             checksumStr = checksumBase64.decode('ascii')
-        except Exception :
+        except Exception:
             # Python 2
             checksumStr = checksumBase64
         yield '=' + str(checksumStr) # take only the last 3 bytes
@@ -126,14 +118,11 @@ def enarmor(data, marker = 'PUBLIC KEY BLOCK', headers = None, lineWidth = 64) :
 
     return "\n".join(_iter_enarmor(data))
 
-
-
 def bitlength(data):
     """ http://tools.ietf.org/html/rfc4880#section-12.2 """
     if ord(data[0:1]) == 0:
         raise OpenPGPException("Tried to get bitlength of string with leading 0")
     return (len(data) - 1) * 8 + int(floor(log(ord(data[0:1]), 2))) + 1
-
 
 def checksum(data):
     mkChk = 0

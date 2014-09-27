@@ -3,6 +3,9 @@ import os.path
 import OpenPGP
 
 class TestASCIIArmor:
+    def readLocalFile(self, filename):
+        return open(os.path.dirname(__file__) + filename, 'r').read()
+
     def test_unarmor_one(self):
          armored = self.readLocalFile('/data/helloKey.asc')
          _, unarmored = OpenPGP.unarmor(armored)[0]
@@ -15,10 +18,6 @@ class TestASCIIArmor:
          header, data = messages[0]
          actual = OpenPGP.enarmor(data, headers = [keyValue.split(': ', 1) for keyValue in header.split('\n')])
          nose.tools.assert_equal(actual, expected)
-
-    def readLocalFile(self, filename):
-        return open(os.path.dirname(__file__) + filename, 'r').read()
-
 
 class TestSerialization:
     def one_serialization(self, path):
