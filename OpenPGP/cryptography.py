@@ -55,16 +55,18 @@ class Wrapper:
         if not key or (s.key_algorithm_name() == 'DSA' and not isinstance(key, DSAPublicKey)):
             return False
         if s.key_algorithm_name() == 'DSA':
-            raise Exception("TODO: https://github.com/pyca/cryptography/pull/912")
+            verifier = key.verifier(self._encode_dsa_der(*s.data), h)
         else: # RSA
-            try:
-                verifier = key.verifier(s.data[0], padding.PKCS1v15(), h)
-                verifier.update(m)
-                verifier.verify()
-            except InvalidSignature:
-              return False
+            verifier = key.verifier(s.data[0], padding.PKCS1v15(), h)
 
-            return True
+        verifier.update(m)
+
+        try:
+            verifier.verify()
+        except InvalidSignature:
+          return False
+
+        return True
 
     def verify(self, packet):
         """ Pass a message to verify with this key, or a key (OpenPGP, _RSAobj, or _DSAobj)
@@ -131,7 +133,7 @@ class Wrapper:
         def doDSA(h, m):
             ctx = key.signer(h())
             ctx.update(m)
-            return [ctx.finalize()]
+            return list(self._decode_dsa_der(ctx.finalize()))
 
         def doRSA(h, m):
             ctx = key.signer(padding.PKCS1v15(), h())
@@ -508,3 +510,33 @@ class Wrapper:
     def _block_pad_unpad(cls, siz, bs, go):
         pad_amount = siz - (len(bs) % siz)
         return go(bs + b'\0'*pad_amount)[:-pad_amount]
+
+    @classmethod
+    def _encode_dsa_der(cls, r, s):
+        der = [b'\x30']
+        ulen = len(r) + len(s) + 4
+        if ulen >= 128:
+            der += [b'\x81']
+        der += [pack('!B', ulen)]
+        der += [b'\x02', pack('!B', len(r)), r]
+        der += [b'\x02', pack('!B', len(s)), s]
+        return b''.join(der)
+
+    @classmethod
+    def _decode_dsa_der(cls, der):
+        if der[1:2] == b'\x81':
+            der = der[4:]
+        else:
+            der = der[3:]
+
+        rlen = unpack('!B', der[0:1])[0]
+
+        r = der[1:rlen+1]
+        while r[0:1] == b'\x00':
+            r = r[1:]
+
+        s = der[3 + rlen:]
+        while s[0:1] == b'\x00':
+            s = s[1:]
+
+        return (r, s)
