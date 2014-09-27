@@ -6,6 +6,42 @@ from time import time
 from math import floor, log
 import zlib, bz2, base64, textwrap, hashlib, re, sys, itertools
 
+__all__ = [
+    'Message',
+    'S2K',
+
+    # Packets
+    'Packet',
+    'AsymmetricSessionKeyPacket',
+    'CompressedDataPacket',
+    'EmbeddedSignaturePacket',
+    'EncryptedDataPacket',
+    'ExperimentalPacket',
+    'IntegrityProtectedDataPacket',
+    'LiteralDataPacket',
+    'MarkerPacket',
+    'ModificationDetectionCodePacket',
+    'OnePassSignaturePacket',
+    'OpenPGPException',
+    'PublicKeyPacket',
+    'PublicSubkeyPacket',
+    'SecretKeyPacket',
+    'SecretSubkeyPacket',
+    'SignaturePacket',
+    'SymmetricSessionKeyPacket',
+    'TrustPacket',
+    'UserAttributePacket',
+    'UserIDPacket',
+
+    # Utilities
+    'unarmor',
+    'enarmor',
+    'crc24',
+    'checksum',
+    'bitlength',
+    'PushbackGenerator'
+]
+
 def unarmor(text):
     """ Convert ASCII-armored data into binary
         http://tools.ietf.org/html/rfc4880#section-6

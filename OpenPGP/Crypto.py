@@ -21,6 +21,8 @@ import Crypto.Util.number
 import OpenPGP
 import hashlib, math, sys, copy, collections
 
+__all__ = ['Wrapper']
+
 class Wrapper:
     """ A wrapper for using the classes from OpenPGP.py with PyCrypto """
     def __init__(self, packet):

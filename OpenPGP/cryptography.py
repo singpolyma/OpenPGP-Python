@@ -11,6 +11,8 @@ from cryptography.exceptions import InvalidSignature
 import OpenPGP
 import hashlib, math, sys, copy, collections
 
+__all__ = ['Wrapper']
+
 class Wrapper:
     """ A wrapper for using the classes from OpenPGP.py with cryptography """
     def __init__(self, packet):
