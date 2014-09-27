@@ -3,7 +3,7 @@
 
 from struct import pack, unpack
 from time import time
-from math import floor, log
+from math import ceil, floor, log
 import zlib, bz2, base64, textwrap, hashlib, re, sys, itertools
 
 __all__ = [
@@ -738,11 +738,16 @@ class SignaturePacket(Packet):
         self.data = []
         for mpi in data:
             if sys.version_info[0] == 2 and isinstance(mpi, long) or isinstance(mpi, int):
-                hex_mpi = '%02X' % mpi
-                final = b''
-                for i in range(0, len(hex_mpi), 2):
-                    final += pack('!B', int(hex_mpi[i:i+2], 16))
-                self.data.append(final)
+                if hasattr(mpi, 'to_bytes'):
+                    self.data.append(mpi.to_bytes(ceil(mpi.bit_length() / 8), byteorder='big'))
+                else: # For python 2
+                    hex_mpi = '%02X' % mpi
+                    if len(hex_mpi) % 2 != 0:
+                        hex_mpi = '0' + hex_mpi
+                    final = b''
+                    for i in range(0, len(hex_mpi), 2):
+                        final += pack('!B', int(hex_mpi[i:i+2], 16))
+                    self.data.append(final)
             else:
                 self.data.append(mpi)
         self.hash_head = unpack('!H', b''.join(self.data)[0:2])[0]
