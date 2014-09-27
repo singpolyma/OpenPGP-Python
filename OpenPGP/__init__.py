@@ -130,6 +130,8 @@ def enarmor(data, marker = 'PUBLIC KEY BLOCK', headers = None, lineWidth = 64) :
 
 def bitlength(data):
     """ http://tools.ietf.org/html/rfc4880#section-12.2 """
+    if ord(data[0:1]) == 0:
+        raise OpenPGPException("Tried to get bitlength of string with leading 0")
     return (len(data) - 1) * 8 + int(floor(log(ord(data[0:1]), 2))) + 1
 
 
