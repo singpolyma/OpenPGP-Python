@@ -663,6 +663,7 @@ class AsymmetricSessionKeyPacket(Packet):
         http://tools.ietf.org/html/rfc4880#section-5.1
     """
     def __init__(self, key_algorithm='', keyid='', encrypted_data='', version=3):
+        super(AsymmetricSessionKeyPacket, self).__init__()
         self.version = version
         self.keyid = keyid[-16:]
         self.key_algorithm = key_algorithm
@@ -1189,6 +1190,7 @@ class SymmetricSessionKeyPacket(Packet):
         http://tools.ietf.org/html/rfc4880#section-5.3
     """
     def __init__(self, s2k=None, encrypted_data=b'', symmetric_algorithm=9, version=3):
+        super(SymmetricSessionKeyPacket, self).__init__()
         self.version = version
         self.symmetric_algorithm = symmetric_algorithm
         self.s2k = s2k
@@ -1593,6 +1595,7 @@ class IntegrityProtectedDataPacket(EncryptedDataPacket):
         http://tools.ietf.org/html/rfc4880#section-5.13
     """
     def __init__(self, data=b'', version=1):
+        super(IntegrityProtectedDataPacket, self).__init__()
         self.version = version
         self.data = data
 
