@@ -1,2 +1,3 @@
 pycrypto
-cryptography
+cryptography<0.7
+cffi==0.8.6
