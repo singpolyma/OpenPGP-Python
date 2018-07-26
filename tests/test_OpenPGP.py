@@ -299,6 +299,31 @@ class TestSerialization:
     def testSymmetricNoMDC(self):
         self.one_serialization("symmetric-no-mdc.gpg")
 
+class TestUserID:
+    def test_name_comment_email_id(self):
+        packet = OpenPGP.UserIDPacket("Human Name (With Comment) <and@email.com>")
+        nose.tools.assert_equal(packet.name, "Human Name")
+        nose.tools.assert_equal(packet.comment, "With Comment")
+        nose.tools.assert_equal(packet.email, "and@email.com")
+
+    def test_name_email_id(self):
+        packet = OpenPGP.UserIDPacket("Human Name <and@email.com>")
+        nose.tools.assert_equal(packet.name, "Human Name")
+        nose.tools.assert_equal(packet.comment, None)
+        nose.tools.assert_equal(packet.email, "and@email.com")
+
+    def test_name_id(self):
+        packet = OpenPGP.UserIDPacket("Human Name")
+        nose.tools.assert_equal(packet.name, "Human Name")
+        nose.tools.assert_equal(packet.comment, None)
+        nose.tools.assert_equal(packet.email, None)
+
+    def test_email_id(self):
+        packet = OpenPGP.UserIDPacket("<and@email.com>")
+        nose.tools.assert_equal(packet.name, None)
+        nose.tools.assert_equal(packet.comment, None)
+        nose.tools.assert_equal(packet.email, "and@email.com")
+
 class TestFingerprint:
     def one_fingerprint(self, path, kf):
         m = OpenPGP.Message.parse(open(os.path.dirname(__file__) + '/data/' + path, 'rb').read())

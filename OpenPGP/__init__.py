@@ -1562,11 +1562,11 @@ class UserIDPacket(Packet):
             else: # User IDs of the form: "name"
                 parts = re.findall('^([^<]+)$', self.text)
                 if len(parts) > 0:
-                    self.name = parts[0][1].strip()
+                    self.name = parts[0].strip()
                 else: # User IDs of the form: "<email>"
                     parts = re.findall('^<([^>]+)>$', self.text)
                     if len(parts) > 0:
-                        self.email = parts[0][1].strip()
+                        self.email = parts[0].strip()
 
     def __str__(self):
         text = []
